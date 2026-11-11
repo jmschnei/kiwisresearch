@@ -28,7 +28,7 @@ A modular, production-ready framework that orchestrates specialized AI agents th
 │  VectorStore (ChromaDB) + ExperimentalDatabase (SQLite) │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 5: LLM Providers                                 │
-│  OpenAI / Anthropic Claude / DeepSeek                    │
+│  OpenAI · Anthropic Claude · DeepSeek · Ollama (local) ││
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -43,6 +43,9 @@ A modular, production-ready framework that orchestrates specialized AI agents th
 | **Data Analyst** | Results Analysis | gpt-4o | 0.3 | Statistical analysis, visualization, conclusions |
 | **Writer** | Paper Writing | gpt-4o | 0.4 | Academic paper in NeurIPS/ICML format + LaTeX PDF |
 | **Reviewer** | Adversarial Peer Review | claude-3.5s | 0.1 | Simulates NeurIPS/ICML reviewer for rigorous critique |
+
+
+> 💡 **Hybrid mode**: Assign cloud models to creative tasks (writing, ideation) and local Ollama models to analytical tasks (code generation, analysis) — cutting API costs by 60-80%.
 
 ## Quick Start
 
@@ -231,6 +234,67 @@ class MyProvider(LLMProvider):
 - [ ] Automatic citation management (BibTeX import/export)
 - [ ] Web UI for monitoring pipeline progress
 - [ ] Experiment versioning and reproducibility tracking
+
+
+## Local Models with Ollama 🏠
+
+Run any model locally — no API keys, no per-token costs. Just install [Ollama](https://ollama.ai) and start a model:
+
+```bash
+# 1. Install (macOS)
+brew install ollama
+ollama serve
+
+# 2. Pull your preferred models
+ollama pull llama3.2          # 8B — fast, balanced quality
+ollama pull mistral-nemo      # 12B — strong reasoning
+ollama pull deepseek-r1       # 70B quantized — excellent for analysis
+ollama pull qwen2.5-coder:7b  # 7B — code generation specialist
+
+# 3. Use in Kiwis (set in kiwis_config.yaml)
+ollama:
+  enabled: true
+  default_model: "llama3.2"
+```
+
+### Recommended model tiers
+
+| Tier | Model | RAM needed | Best for |
+|------|-------|-----------|----------|
+| Lightweight | phi3-mini, gemma2:2b | <5 GB | Prototyping, fast iterations |
+| Balanced | llama3.2, mistral-nemo, qwen2.5-coder:7b | 8-12 GB | Production use (code gen, analysis) |
+| Powerful | llama3.3, deepseek-r1 | 32GB+ + GPU | Top-tier quality (reviewer, writer) |
+
+### Cost comparison (per 1M input tokens)
+
+| Provider | Cost | Quality tier | Best for |
+|----------|------|-------------|----------|
+| **OpenAI gpt-4o** | $2.50 | Production-grade | Writing, ideation |
+| **Anthropic Claude 3.5 Sonnet** | $3.00 | Reasoning champion | Adversarial review |
+| **DeepSeek** | $0.14 | Near-Parity | Budget cloud fallback |
+| **Ollama (any model)** | **FREE** | Depends on model | Code gen, analysis, all local |
+
+### Suggested hybrid configurations
+
+**Cost-conscious (80% local):**
+```yaml
+engineer:    llama3.2        # Code gen — local ✓
+analyst:     mistral-nemo    # Stats reasoning — local ✓  
+reviewer:    deepseek-r1     # Critical analysis — local ✓
+ideation:    gpt-4o          # Creative — cloud (few calls)
+writer:      claude-3.5-s    # Long-form writing quality — cloud
+```
+
+**Maximum privacy (100% local):**
+```yaml
+engineer:    codellama:34b   # Code specialist
+analyst:     llama3.3        # Strong reasoning
+reviewer:    deepseek-r1     # Best local analysis
+writer:      qwen2.5:72b     # Long-form generation
+ideation:    mistral-nemo    # Creative reasoning
+librarian:   llama3.3        # Literature synthesis
+```
+
 
 ## License
 

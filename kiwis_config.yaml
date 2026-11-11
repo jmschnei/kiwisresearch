@@ -93,3 +93,37 @@ memory:
 logging:
   level: "INFO"                            # DEBUG | INFO | WARNING | ERROR
   format: "%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"
+
+# =============================================================================
+# Ollama Local Model Options
+# =============================================================================
+ollama:
+  enabled: false                        # Set to true to enable local models
+  base_url: "http://localhost:11434"   # Your Ollama endpoint
+  default_model: "llama3.2"             # Will pull from registry if not present
+  
+  # Recommended models by capability tier:
+  model_tiers:
+    lightweight:                         # < 5GB RAM, CPU only
+      - "phi3-mini"                     # 3.8B params
+      - "gemma2:2b"                    # 2.6B params
+    balanced:                            # 8-12GB RAM, decent quality
+      - "llama3.2"                     # 8B params — best all-rounder local
+      - "mistral-nemo"                # 12B params — strong reasoning
+      - "qwen2.5-coder:7b"            # 7B params — code specialist
+    powerful:                            # 32GB+ RAM, GPU preferred
+      - "llama3.3"                     # 70B params — top local quality
+      - "deepseek-r1"                  # Strong reasoning capability
+
+# Suggested model assignments for cost-conscious setups:
+#
+# For full local setup (no API costs):
+#   engine:    llama3.2          (code generation)
+#   analyst:   mistral-nemo     (statistical reasoning)
+#   reviewer:  deepseek-r1      (critical analysis - needs more RAM)
+#
+# For hybrid setup (some cloud, some local):
+#   writer:    gpt-4o           (long-form writing quality)
+#   reviewer:  claude-3.5-s     (adversarial critique quality)
+#   engineer:  llama3.2         (code gen — runs locally!)
+#   librarian: ollama/llama3.3 (literature synthesis)

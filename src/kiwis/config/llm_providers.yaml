@@ -1,15 +1,21 @@
-# LLM Provider Configuration Examples
+# =============================================================================
+# LLM Provider Configuration - Full Registry
+# =============================================================================
+
+# Default provider used when no agent-specific override exists
+default: "openai"
 
 providers:
-  default: "openai"
-  
+  # ---- Remote Providers ----
+
   openai:
     provider_type: "openai"
     name: "OpenAI"
-    base_url: null                        # null = default OpenAI API
+    api_key_env_var: "OPENAI_API_KEY"
+    base_url: null                        # null = default https://api.openai.com/v1
     default_model: "gpt-4o"
     supported_models:
-      - "gpt-4o"                          # Fast, general-purpose
+      - "gpt-4o"                          # Fast, general-purpose — best default
       - "gpt-4o-mini"                     # Cost-effective alternative
       - "gpt-4-turbo"                     # High-capability for complex tasks
     rate_limit_rpm: 1000
@@ -18,10 +24,11 @@ providers:
   anthropic:
     provider_type: "anthropic"
     name: "Anthropic Claude"
+    api_key_env_var: "ANTHROPIC_API_KEY"
     base_url: null
     default_model: "claude-3-5-sonnet-20241022"
     supported_models:
-      - "claude-3-5-sonnet-20241022"     # Best for reasoning/criticism
+      - "claude-3-5-sonnet-20241022"     # Best for reasoning/criticism (reviewer)
       - "claude-3-opus-20240229"         # Strongest for complex analysis
     rate_limit_rpm: 500
     rate_limit_tpd: 200000
@@ -29,28 +36,76 @@ providers:
   deepseek:
     provider_type: "deepseek"
     name: "DeepSeek"
+    api_key_env_var: "DEEPSEEK_API_KEY"
     base_url: "https://api.deepseek.com/v1"
     default_model: "deepseek-reasoner"
     supported_models:
       - "deepseek-reasoner"              # Strong reasoning capabilities
-      - "deepseek-chat"                  # General chat
+      - "deepseek-chat"                  # General chat, very cost-effective
     rate_limit_rpm: 800
     rate_limit_tpd: 300000
 
-# Model assignment by agent role
-agent_model_assignments:
-  ideation: "gpt-4o"                     # Creative reasoning for hypothesis
-  librarian: "gpt-4o"                    # Factual retrieval and synthesis
-  experiment_architect: "gpt-4o"         # Technical planning
-  engineer: "gpt-4o"                     # Code generation (high quality)
-  data_analyst: "gpt-4o"                # Statistical reasoning
-  writer: "gpt-4o"                       # Long-form writing
-  reviewer: "claude-3-5-sonnet-20241022" # Critical analysis (Claude excels)
+  # ---- Local Provider (Ollama) ----
 
+  ollama:
+    provider_type: "ollama"
+    name: "Ollama (local)"
+    api_key_env_var: null                # No API key needed — runs locally
+    base_url: "http://localhost:11434"   # Ollama default endpoint
+    timeout_seconds: 300                 # Local models may take longer
+    default_model: "llama3.2"            # Quick to load, good all-rounder
+    supported_models:
+      # --- Lightweight (fast, low RAM) ---
+      - "phi3-mini"                      # 3.8B — runs on 4GB RAM
+      - "gemma2:2b"                     # 2.6B — Google's lightweight model
+      
+      # --- Medium (good balance of speed/quality) ---
+      - "llama3.2"                       # 8B — excellent for coding & text
+      - "llama3.2:1b"                   # 1B — ultra-fast prototyping
+      - "mistral-nemo"                  # 12B — strong reasoning
+      - "qwen2.5-coder:7b"             # 7B — code generation specialist
+      
+      # --- Large (best quality, needs GPU/32GB+ RAM) ---
+      - "llama3.3"                       # 70B — top tier local model
+      - "codellama:34b"                 # 34B — specialized code model
+      - "deepseek-r1"                   # 671B (quantized) — strong reasoning
+      
+      # --- Specialized ---
+      - "neural-chat"                   # LLM-based conversation
+      - "openhermes2.5"                # Task-oriented
+    
+    rate_limit_rpm: 100                 # Limited by your hardware
+    rate_limit_tpd: null                # No per-day limit for local models
+
+# =============================================================================
+# Model Assignment by Agent Role (overrides providers[].default_model)
+# =============================================================================
+agent_model_assignments:
+  ideation: "gpt-4o"                    # Creative reasoning for hypothesis generation
+  librarian: "gpt-4o"                   # Factual retrieval and synthesis
+  experiment_architect: "gpt-4o"        # Technical planning
+  engineer: "llama3.2"                  # Can run locally — cost savings on code gen!
+  data_analyst: "mistral-nemo"          # Strong reasoning, runs locally
+  writer: "claude-3-5-sonnet-20241022"  # Long-form writing — remote recommended
+  reviewer: "llama3.3"                  # Critical analysis — can run locally
+
+# =============================================================================
 # Fallback strategy when primary provider is unavailable
+# =============================================================================
 fallback_strategy:
   enabled: true
   fallback_chain:
-    - "openai"                           # Primary
-    - "anthropic"                        # Fallback for reasoning tasks
-    - "deepseek"                         # Budget fallback
+    - "openai"                           # Primary (cloud)
+    - "anthropic"                        # Fallback for reasoning tasks (cloud)
+    - "deepseek"                         # Budget fallback (cloud)
+    - "ollama"                          # Offline fallback (local)
+
+# =============================================================================
+# Ollama-specific settings
+# =============================================================================
+ollama:
+  auto_pull_models: false                # Automatically pull missing models?
+  num_gpu_layers: -1                    # Layers to offload to GPU (-1 = all)
+  context_length: 8192                  # Max context window
+  temperature: 0.7                      # Default temperature for Ollama calls
+  stream: false                         # Whether to stream responses
