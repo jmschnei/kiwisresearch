@@ -1,0 +1,56 @@
+# LLM Provider Configuration Examples
+
+providers:
+  default: "openai"
+  
+  openai:
+    provider_type: "openai"
+    name: "OpenAI"
+    base_url: null                        # null = default OpenAI API
+    default_model: "gpt-4o"
+    supported_models:
+      - "gpt-4o"                          # Fast, general-purpose
+      - "gpt-4o-mini"                     # Cost-effective alternative
+      - "gpt-4-turbo"                     # High-capability for complex tasks
+    rate_limit_rpm: 1000
+    rate_limit_tpd: 500000
+
+  anthropic:
+    provider_type: "anthropic"
+    name: "Anthropic Claude"
+    base_url: null
+    default_model: "claude-3-5-sonnet-20241022"
+    supported_models:
+      - "claude-3-5-sonnet-20241022"     # Best for reasoning/criticism
+      - "claude-3-opus-20240229"         # Strongest for complex analysis
+    rate_limit_rpm: 500
+    rate_limit_tpd: 200000
+
+  deepseek:
+    provider_type: "deepseek"
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    default_model: "deepseek-reasoner"
+    supported_models:
+      - "deepseek-reasoner"              # Strong reasoning capabilities
+      - "deepseek-chat"                  # General chat
+    rate_limit_rpm: 800
+    rate_limit_tpd: 300000
+
+# Model assignment by agent role
+agent_model_assignments:
+  ideation: "gpt-4o"                     # Creative reasoning for hypothesis
+  librarian: "gpt-4o"                    # Factual retrieval and synthesis
+  experiment_architect: "gpt-4o"         # Technical planning
+  engineer: "gpt-4o"                     # Code generation (high quality)
+  data_analyst: "gpt-4o"                # Statistical reasoning
+  writer: "gpt-4o"                       # Long-form writing
+  reviewer: "claude-3-5-sonnet-20241022" # Critical analysis (Claude excels)
+
+# Fallback strategy when primary provider is unavailable
+fallback_strategy:
+  enabled: true
+  fallback_chain:
+    - "openai"                           # Primary
+    - "anthropic"                        # Fallback for reasoning tasks
+    - "deepseek"                         # Budget fallback

@@ -1,0 +1,66 @@
+# Agent-Specific Configuration
+
+agents:
+  ideation:
+    role: "ideation"
+    description: "Analyzes literature gaps and proposes novel research hypotheses"
+    model: "gpt-4o"
+    temperature: 0.7          # High creativity for hypothesis generation
+    max_tokens: 4096
+    enabled: true
+    system_prompt_file: null   # Use built-in prompt
+  
+  librarian:
+    role: "librarian"
+    description: "Queries academic APIs and synthesizes literature reviews"
+    model: "gpt-4o"
+    temperature: 0.2          # Low temperature for factual accuracy
+    max_tokens: 8192
+    enabled: true
+    api_keys:
+      arxiv_enabled: true
+      semantic_scholar_enabled: true
+      crossref_enabled: true
+  
+  experiment_architect:
+    role: "experiment_architect"
+    description: "Designs methodologies, defines metrics, selects datasets"
+    model: "gpt-4o"
+    temperature: 0.4          # Balanced creativity and rigor
+    max_tokens: 8192
+    enabled: true
+  
+  engineer:
+    role: "engineer"
+    description: "Writes code, executes experiments, debugs iteratively"
+    model: "gpt-4o"
+    temperature: 0.2          # Low for precise code generation
+    max_tokens: 16384
+    enabled: true
+    sandbox_mode: "isolated"
+    max_debug_iterations: 5
+  
+  data_analyst:
+    role: "data_analyst"
+    description: "Processes results, generates visualizations, extracts conclusions"
+    model: "gpt-4o"
+    temperature: 0.3          # Moderate for balanced analysis
+    max_tokens: 8192
+    enabled: true
+  
+  writer:
+    role: "writer"
+    description: "Writes academic papers and compiles PDFs via LaTeX"
+    model: "gpt-4o"
+    temperature: 0.4          # Moderate creativity for writing
+    max_tokens: 32768         # Long-form content needs more tokens
+    enabled: true
+  
+  reviewer:
+    role: "reviewer"
+    description: "Adversarial peer reviewer simulating NeurIPS/ICML standards"
+    model: "claude-3-5-sonnet-20241022"  # Best for critical analysis
+    temperature: 0.1          # Lowest for thorough, rigorous review
+    max_tokens: 8192
+    enabled: true
+    critique_rounds: 2
