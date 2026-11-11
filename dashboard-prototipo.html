@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KiwiSci · AI Scientist Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --bg-primary: #0a0e1a;
+    --bg-secondary: #111827;
+    --bg-tertiary: #1a2236;
+    --bg-card: #151d30;
+    --bg-hover: #1e2940;
+    --border-color: #2a3a5c;
+    --border-glow: #3b82f6;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-green: #10b981;
+    --accent-yellow: #f59e0b;
+    --accent-orange: #f97316;
+    --accent-red: #ef4444;
+    --accent-purple: #a855f7;
+    --accent-pink: #ec4899;
+    --glow-blue: 0 0 20px rgba(59,130,246,0.3);
+    --glow-cyan: 0 0 20px rgba(6,182,212,0.3);
+    --glow-green: 0 0 20px rgba(16,185,129,0.3);
+    --glow-red: 0 0 20px rgba(239,68,68,0.3);
+    --gradient-hero: linear-gradient(135deg, #3b82f6 0%, #a855f7 50%, #ec4899 100%);
+    --gradient-card: linear-gradient(145deg, rgba(26,34,54,0.8), rgba(17,24,39,0.9));
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── Scrollbar ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent-blue); }
+
+  /* ─── Header ─── */
+  .header {
+    height: 64px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    position: relative;
+    z-index: 100;
+  }
+
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), var(--accent-purple), var(--accent-pink), transparent);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--gradient-hero);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    box-shadow: var(--glow-blue);
+  }
+
+  .logo-text {
+    font-weight: 700;
+    font-size: 18px;
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Cost Center */
+  .cost-center {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .cost-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .cost-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  .cost-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .cost-value.tokens { color: var(--accent-cyan); }
+  .cost-value.dollar { color: var(--accent-green); }
+  .cost-value.time { color: var(--accent-yellow); }
+
+  /* Swarm Status */
+  .swarm-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border-radius: 24px;
+    border: 1px solid var(--border-color);
+  }
+
+  .swarm-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+    50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+  }
+
+  .swarm-label { font-size: 12px; color: var(--text-secondary); }
+  .swarm-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--accent-green);
+    font-weight: 600;
+  }
+
+  /* Header Actions */
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn-new-research {
+    padding: 10px 20px;
+    background: var(--gradient-hero);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(59,130,246,0.3);
+  }
+
+  .btn-new-research:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 25px rgba(59,130,246,0.5);
+  }
+
+  /* ─── Main Layout ─── */
+  .main-layout {
+    display: flex;
+    height: calc(100vh - 64px);
+  }
+
+  /* ─── Sidebar Pipelines ─── */
+  .sidebar {
+    width: 280px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+  }
+
+  .sidebar-filters {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .filter-chip {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .filter-chip.active {
+    background: var(--bg-tertiary);
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  .pipeline-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .pipeline-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pipeline-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+  }
+
+  .pipeline-item.active::before { background: var(--accent-blue); }
+  .pipeline-item.completed::before { background: var(--accent-green); }
+  .pipeline-item.failed::before { background: var(--accent-red); }
+  .pipeline-item.paused::before { background: var(--accent-yellow); }
+
+  .pipeline-item:hover {
+    border-color: var(--accent-blue);
+    transform: translateX(2px);
+  }
+
+  .pipeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .pipeline-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .pipeline-badge {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .badge-active { background: rgba(59,130,246,0.2); color: var(--accent-blue); }
+  .badge-completed { background: rgba(16,185,129,0.2); color: var(--accent-green); }
+  .badge-failed { background: rgba(239,68,68,0.2); color: var(--accent-red); }
+  .badge-paused { background: rgba(245,158,11,0.2); color: var(--accent-yellow); }
+
+  .pipeline-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .pipeline-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .progress-bar-bg {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  .progress-fill-active { background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan)); }
+  .progress-fill-completed { background: var(--accent-green); }
+  .progress-fill-paused { background: var(--accent-yellow); }
+
+  .progress-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  .pipeline-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  /* ─── Central Graph Area ─── */
+  .center-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .graph-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #graph-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .graph-overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+
+  .graph-title-card {
+    background: rgba(21,29,48,0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 18px;
+    pointer-events: auto;
+  }
+
+  .graph-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .graph-subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Agent Nodes Legend */
+  .agent-legend {
+    background: rgba(21,29,48,0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 10px 14px;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  /* Terminal Panel */
+  .terminal-panel {
+    height: 220px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .terminal-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 12px;
+  }
+
+  .terminal-tab {
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .terminal-tab.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+  }
+
+  .terminal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .terminal-line {
+    display: flex;
+    gap: 8px;
+    animation: fadeInLine 0.3s ease;
+  }
+
+  @keyframes fadeInLine {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .terminal-timestamp {
+    color: var(--text-muted);
+    font-size: 10px;
+    white-space: nowrap;
+    min-width: 72px;
+  }
+
+  .terminal-agent-tag {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .tag-ideador { background: rgba(168,85,247,0.2); color: var(--accent-purple); }
+  .tag-rag { background: rgba(6,182,212,0.2); color: var(--accent-cyan); }
+  .tag-coder { background: rgba(59,130,246,0.2); color: var(--accent-blue); }
+  .tag-sandbox { background: rgba(16,185,129,0.2); color: var(--accent-green); }
+  .tag-analista { background: rgba(249,115,22,0.2); color: var(--accent-orange); }
+  .tag-latex { background: rgba(236,72,153,0.2); color: var(--accent-pink); }
+  .tag-revisor { background: rgba(239,68,68,0.2); color: var(--accent-red); }
+
+  .terminal-text { color: var(--text-secondary); }
+  .terminal-text.thinking { color: var(--accent-purple); font-style: italic; }
+  .terminal-text.success { color: var(--accent-green); }
+  .terminal-text.error { color: var(--accent-red); }
+  .terminal-text.warning { color: var(--accent-yellow); }
+
+  /* ─── Right Inspector Panel ─── */
+  .inspector-panel {
+    width: 340px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .inspector-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .inspector-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 12px;
+  }
+
+  .inspector-tab {
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .inspector-tab.active { color: var(--accent-purple); border-bottom-color: var(--accent-purple); }
+
+  .step-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .step-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+
+  .step-card:hover { border-color: var(--accent-purple); }
+
+  .step-header {
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .step-number {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step-num-done { background: rgba(16,185,129,0.2); color: var(--accent-green); }
+  .step-num-progress { background: rgba(59,130,246,0.2); color: var(--accent-blue); }
+  .step-num-waiting { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+
+  .step-info { flex: 1; }
+
+  .step-name {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .step-agent {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .step-status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-done { background: var(--accent-green); box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  .dot-progress { background: var(--accent-blue); animation: pulse-dot 1.5s infinite; }
+  .dot-waiting { background: var(--text-muted); }
+
+  .step-body {
+    padding: 0 12px 12px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .step-justification {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    padding: 8px 0;
+    border-left: 2px solid var(--accent-purple);
+    margin: 8px 0;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+  }
+
+  .step-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    padding: 8px;
+    margin: 6px 0;
+    overflow-x: auto;
+    color: var(--accent-cyan);
+    border: 1px solid var(--border-color);
+  }
+
+  .btn-reenact {
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--accent-blue);
+    color: var(--accent-blue);
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .btn-reenact:hover {
+    background: rgba(59,130,246,0.1);
+  }
+
+  /* ─── Modal ─── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    width: 640px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.5), var(--glow-blue);
+    animation: slideUp 0.4s ease;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .modal-header {
+    padding: 24px 28px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+  }
+
+  .modal-header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 28px; right: 28px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+  }
+
+  .modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .modal-close {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+  }
+
+  .modal-close:hover { background: var(--accent-red); color: white; }
+
+  .modal-body { padding: 24px 28px; }
+
+  .form-section {
+    margin-bottom: 20px;
+  }
+
+  .form-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent-cyan);
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .form-input, .form-textarea, .form-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .form-input:focus, .form-textarea:focus, .form-select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+
+  .form-textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
+
+  .form-select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 12L2 6h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .agent-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .agent-toggle {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .agent-toggle.selected {
+    border-color: var(--accent-blue);
+    background: rgba(59,130,246,0.15);
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+
+  .modal-footer {
+    padding: 16px 28px 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .btn-cancel {
+    padding: 10px 20px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .btn-cancel:hover { background: var(--bg-hover); }
+
+  .btn-launch {
+    padding: 10px 28px;
+    background: var(--gradient-hero);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(59,130,246,0.3);
+    font-family: 'Inter', sans-serif;
+  }
+
+  .btn-launch:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 25px rgba(59,130,246,0.5);
+  }
+
+  /* ─── Results Panel (bottom) ─── */
+  .results-panel {
+    height: 0;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    overflow: hidden;
+    transition: height 0.4s ease;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .results-panel.active { height: 280px; }
+
+  .results-toggle {
+    position: absolute;
+    bottom: 220px;
+    right: 16px;
+    z-index: 50;
+    padding: 6px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .results-toggle:hover { border-color: var(--accent-green); color: var(--accent-green); }
+
+  .results-header {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .results-content {
+    display: flex;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .pdf-preview {
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid var(--border-color);
+    position: relative;
+    overflow: auto;
+  }
+
+  .pdf-page {
+    width: 200px;
+    height: 260px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    padding: 24px;
+    color: #1a1a1a;
+    font-size: 7px;
+    line-height: 1.8;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .pdf-title {
+    font-weight: 700;
+    font-size: 9px;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .pdf-authors {
+    font-size: 6px;
+    text-align: center;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .pdf-abstract {
+    font-size: 6px;
+    text-align: justify;
+    color: #444;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+
+  .pdf-body p {
+    margin-bottom: 3px;
+    text-align: justify;
+  }
+
+  .metrics-panel {
+    width: 280px;
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  .metric-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+
+  .metric-title {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .metric-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ─── Node Tooltip ─── */
+  .node-tooltip {
+    position: fixed;
+    background: rgba(21,29,48,0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    z-index: 200;
+    pointer-events: none;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    min-width: 200px;
+    display: none;
+  }
+
+  .node-tooltip.visible { display: block; }
+
+  .tooltip-name {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .tooltip-status {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ─── Artifact Cards ─── */
+  .artifact-grid {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .artifact-card {
+    min-width: 100px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+  }
+
+  .artifact-icon {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+
+  .artifact-label {
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+
+  /* ─── Animations ─── */
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* ─── Peer Review Stars ─── */
+  .stars { display: flex; gap: 2px; }
+  .star { color: var(--accent-yellow); font-size: 16px; }
+  .star.empty { opacity: 0.3; }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">🧠</div>
+      <div>
+        <div class="logo-text">KiwiSci</div>
+        <div class="logo-sub">AI Scientist Engine v3.2</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cost-center">
+    <div class="cost-item">
+      <span class="cost-label">Tokens Usados</span>
+      <span class="cost-value tokens" id="token-count">2,847,391</span>
+    </div>
+    <div class="cost-item">
+      <span class="cost-label">Costo Acumulado</span>
+      <span class="cost-value dollar" id="cost-display">$0.00</span>
+    </div>
+    <div class="cost-item">
+      <span class="cost-label">Uptime</span>
+      <span class="cost-value time" id="uptime">00:00:00</span>
+    </div>
+  </div>
+
+  <div class="swarm-status">
+    <div class="swarm-dot"></div>
+    <span class="swarm-label">Swarm:</span>
+    <span class="swarm-count" id="swarm-active">7/7 activos</span>
+  </div>
+
+  <div class="header-actions">
+    <button class="btn-new-research" onclick="openModal()">
+      <span>🚀</span> Nueva Investigación
+    </button>
+  </div>
+</header>
+
+<!-- ═══ MAIN LAYOUT ═══ -->
+<div class="main-layout">
+
+  <!-- SIDEBAR: Pipelines -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">📋 Pipelines</span>
+      <span style="font-size:11px;color:var(--text-muted)">3 activas</span>
+    </div>
+
+    <div class="sidebar-filters">
+      <button class="filter-chip active" onclick="filterPipelines('all', this)">Todas (6)</button>
+      <button class="filter-chip" onclick="filterPipelines('active', this)">Activas</button>
+      <button class="filter-chip" onclick="filterPipelines('completed', this)">Completadas</button>
+      <button class="filter-chip" onclick="filterPipelines('failed', this)">Fallidas</button>
+    </div>
+
+    <div class="pipeline-list" id="pipeline-list">
+      <!-- Populated by JS -->
+    </div>
+  </aside>
+
+  <!-- CENTER: Graph + Terminal -->
+  <main class="center-area">
+    <div class="graph-container" id="graph-container">
+      <canvas id="graph-canvas"></canvas>
+
+      <div class="graph-overlay">
+        <div class="graph-title-card">
+          <div class="graph-title">🔬 Grafo Multiagente en Tiempo Real</div>
+          <div class="graph-subtitle">Proyecto: Neural Architecture Search para Modelos Ligeros en Edge Computing</div>
+        </div>
+
+        <div class="agent-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-purple)"></div> Ideador</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-cyan)"></div> RAG Bibliotecario</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-blue)"></div> Coder</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-green)"></div> Sandbox</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-orange)"></div> Analista</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-pink)"></div> Redactor LaTeX</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent-red)"></div> Revisor Adversarial</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="results-toggle" id="results-toggle" onclick="toggleResults()">
+      📄 Ver Resultados ▾
+    </button>
+
+    <!-- Terminal -->
+    <div class="terminal-panel">
+      <div class="terminal-tabs">
+        <button class="terminal-tab active" onclick="switchTerminalTab('cot', this)">💭 Chain of Thought</button>
+        <button class="terminal-tab" onclick="switchTerminalTab('logs', this)">📋 System Logs</button>
+        <button class="terminal-tab" onclick="switchTerminalTab('traces', this)">🔍 Sandbox Traces</button>
+      </div>
+      <div class="terminal-content" id="terminal-content">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="results-panel" id="results-panel">
+      <div class="results-header">
+        <span style="font-size:13px;font-weight:600;color:var(--accent-green)">✅ Resultados Finales — Paper NeurIPS 2026</span>
+        <button onclick="toggleResults()" style="background:none;border:1px solid var(--border-color);color:var(--text-secondary);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:'Inter',sans-serif;">✕</button>
+      </div>
+      <div class="results-content">
+        <div class="pdf-preview">
+          <div class="pdf-page">
+            <div class="pdf-title" style="font-family:serif;margin-bottom:8px;">Efficient Neural Architecture Search via Reinforcement Learning for Edge Deployment</div>
+            <div class="pdf-authors" style="font-family:serif;margin-bottom:12px;">J. Morales*, A. Chen, R. Patel — DFKI Lab & MIT CSAIL</div>
+            <div class="pdf-abstract" style="font-family:serif;border-top:1px solid #ccc;padding-top:6px;margin-bottom:8px;">
+              <strong>Abstract.</strong> We present EAS-RL, a novel framework combining evolutionary algorithms with reinforcement learning for automatic discovery of neural architectures optimized for edge devices. Our approach reduces computational search cost by 94% while achieving Pareto-optimal FLOPs-accuracy trade-offs across CIFAR-10, ImageNet, and TinyImageNet benchmarks...
+            </div>
+            <div class="pdf-body">
+              <p><strong>I. INTRODUCTION</strong></p>
+              <p>The proliferation of edge computing has necessitated the development of neural architectures that can operate efficiently on devices with constrained computational resources...</p>
+              <p><strong>II. RELATED WORK</strong></p>
+              <p>Recent advances in Neural Architecture Search (NAS) have demonstrated remarkable performance gains. However, existing methods struggle with the multi-objective optimization inherent to edge deployment...</p>
+              <div style="text-align:center;margin:8px 0;padding:6px;background:#f5f5f5;border-radius:4px;font-family:monospace;font-size:7px;">
+                Architecture: ConvBlock → DepthWiseSeparable → AttentionHead → ASPP-Module<br>
+                Parameters: 1.2M | FLOPs: 89M | Latency: 4.2ms (Cortex-A78) | mAP@0.5: 0.847
+              </div>
+              <p><strong>III. METHODOLOGY</strong></p>
+              <p>Our proposed EAS-RL framework operates in three phases: (1) Search space definition via differentiable architecture parameters; (2) Policy optimization using proximal policy optimization...</p>
+            </div>
+          </div>
+        </div>
+        <div class="metrics-panel">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--accent-green)">🏆 Peer Review Metrics</div>
+
+          <div class="metric-card" style="border-color:rgba(16,185,129,0.3);">
+            <div class="metric-title">Overall Score</div>
+            <div class="metric-value" style="color:var(--accent-green);">8.7<span style="font-size:14px;color:var(--text-muted)">/10</span></div>
+            <div class="metric-sub">Strong Accept</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Novelty</div>
+            <div class="metric-value" style="color:var(--accent-cyan);">9.1</div>
+            <div class="metric-sub">Innovative framework with novel RL formulation</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Methodology</div>
+            <div class="metric-value" style="color:var(--accent-blue);">8.4</div>
+            <div class="metric-sub">Solid experimental design with ablation studies</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Clarity</div>
+            <div class="metric-value" style="color:var(--accent-purple);">8.8</div>
+            <div class="metric-sub">Well-organized with comprehensive appendices</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Reproducibility</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <span class="metric-value" style="color:var(--accent-yellow);font-size:18px;">92%</span>
+              <div>
+                <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;flex:1;overflow:hidden;">
+                  <div style="height:100%;width:92%;background:var(--accent-yellow);border-radius:2px;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="metric-card" style="margin-top:8px;">
+            <div class="metric-title">Reviewer Consensus</div>
+            <div class="stars">
+              <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star" style="opacity:0.5">★</span>
+            </div>
+            <div class="metric-sub" style="margin-top:4px;">3/3 Accept | 2 Strong Accept</div>
+          </div>
+
+          <div class="artifact-grid" style="flex-direction:column;gap:6px;margin-top:12px;">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">📦 Artefactos Generados</div>
+            <div class="artifact-card">
+              <div class="artifact-icon">📊</div>
+              <div class="artifact-label">23 Figuras SVG/PNG</div>
+            </div>
+            <div class="artifact-card">
+              <div class="artifact-icon">⚙️</div>
+              <div class="artifact-label">Reproducibility Pack</div>
+            </div>
+            <div class="artifact-card">
+              <div class="artifact-icon">🗺️</div>
+              <div class="artifact-label">Architecture Diagram</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: Inspector Panel -->
+  <aside class="inspector-panel">
+    <div class="inspector-header">
+      <span style="font-size:13px;font-weight:600;color:var(--text-primary)">🔍 Inspector de Pasos</span>
+      <span style="font-size:10px;color:var(--text-muted)">Paso 5 de 8</span>
+    </div>
+
+    <div class="inspector-tabs">
+      <button class="inspector-tab active" onclick="switchInspectorTab('steps', this)">Pasos</button>
+      <button class="inspector-tab" onclick="switchInspectorTab('reasoning', this)">Razonamiento</button>
+      <button class="inspector-tab" onclick="switchInspectorTab('code', this)">Código</button>
+    </div>
+
+    <div class="step-list" id="step-list">
+      <!-- Populated by JS -->
+    </div>
+  </aside>
+
+</div>
+
+<!-- ═══ NEW RESEARCH MODAL ═══ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">🧪 Nueva Investigación</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="form-section">
+        <div class="form-section-title">📌 Configuración del Proyecto</div>
+        <div class="form-group">
+          <label class="form-label">Título de la Investigación</label>
+          <input class="form-input" placeholder="Ej: Federated Learning con Privacidad Diferencial para Datos Médicos" id="research-title">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tipo de Generación</label>
+            <select class="form-select" id="research-type">
+              <option value="paper">📝 Artículo Completo (NeurIPS/IEEE)</option>
+              <option value="survey">📚 Survey / Review Systemática</option>
+              <option value="exploration">🔍 Exploración de Líneas</option>
+              <option value="experiment">🧪 Diseño Experimental</option>
+              <option value="benchmark">📊 Benchmark Comparativo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Domino de Investigación</label>
+            <select class="form-select" id="research-domain">
+              <option value="ml">Machine Learning</option>
+              <option value="nlp">NLP / Transformers</option>
+              <option value="cv">Computer Vision</option>
+              <option value="graphs">Graph Neural Networks</option>
+              <option value="rl">Reinforcement Learning</option>
+              <option value="privacy">Privacy & Security</option>
+              <option value="multimodal">Multimodal AI</option>
+              <option value="edge">Edge AI / TinyML</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Descripción / Hipótesis Principal</label>
+          <textarea class="form-textarea" placeholder="Describe tu hipótesis, objetivo principal o pregunta de investigación..." id="research-desc"></textarea>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">🤖 Selección de Agentes del Swarm</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Selecciona los agentes que participarán en esta investigación:</p>
+        <div class="agent-selector" id="agent-selector">
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">🧠 Ideador</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">📚 RAG Bibliotecario</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">💻 Coder</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">⚙️ Sandbox</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">📊 Analista</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">📝 Redactor LaTeX</button>
+          <button class="agent-toggle selected" onclick="toggleAgent(this)">🔍 Revisor Adversarial</button>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">⚙️ Parámetros Avanzados</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Modelo Principal</label>
+            <select class="form-select">
+              <option>o4 (Default)</option>
+              <option>o3-mini-high</option>
+              <option>GPT-4o</option>
+              <option>Claude 4 Sonnet</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Max Tokens / Iteración</label>
+            <input class="form-input" type="number" value="16000" min="4000" max="200000" step="4000">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Budget Máximo ($)</label>
+            <input class="form-input" type="number" value="25.00" step="1.00">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nivel de Profundidad</label>
+            <select class="form-select">
+              <option>Rápido (3 iteraciones)</option>
+              <option selected>Estándar (8 iteraciones)</option>
+              <option>Profundo (16 iteraciones)</option>
+              <option>Máximo (32 iteraciones)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-launch" onclick="launchResearch()">🚀 Lanzar Investigación</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ NODE TOOLTIP ═══ -->
+<div class="node-tooltip" id="node-tooltip">
+  <div class="tooltip-name" id="tooltip-name"></div>
+  <div class="tooltip-status" id="tooltip-status"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+// DATA & STATE
+// ════════════════════════════════════════
+
+const agents = [
+  { id: 'ideador', name: 'Ideador', icon: '🧠', color: '#a855f7', status: 'thinking', x: 0, y: 0, size: 42 },
+  { id: 'rag', name: 'RAG Bibliotecario', icon: '📚', color: '#06b6d4', status: 'executing', x: 0, y: 0, size: 38 },
+  { id: 'coder', name: 'Coder', icon: '💻', color: '#3b82f6', status: 'executing', x: 0, y: 0, size: 40 },
+  { id: 'sandbox', name: 'Sandbox', icon: '⚙️', color: '#10b981', status: 'executing', x: 0, y: 0, size: 36 },
+  { id: 'analista', name: 'Analista', icon: '📊', color: '#f97316', status: 'waiting', x: 0, y: 0, size: 38 },
+  { id: 'latex', name: 'Redactor LaTeX', icon: '📝', color: '#ec4899', status: 'waiting', x: 0, y: 0, size: 36 },
+  { id: 'revisor', name: 'Revisor Adversarial', icon: '🔍', color: '#ef4444', status: 'reviewing', x: 0, y: 0, size: 40 }
+];
+
+const agentStatusLabels = {
+  thinking: '💭 Pensando...',
+  executing: '⚡ Ejecutando',
+  waiting: '⏳ Esperando turno',
+  reviewing: '🔎 En revisión',
+  idle: '😴 Inactivo'
+};
+
+const pipelineData = [
+  { name: 'NAS Edge Computing', desc: 'Búsqueda de arquitectura neural para dispositivos edge', status: 'active', progress: 67, tokens: '1.2M', time: '04:32:18' },
+  { name: 'Federated Privacy', desc: 'FL con privacidad diferencial para datos médicos', status: 'active', progress: 43, tokens: '847K', time: '02:15:44' },
+  { name: 'Graph Transformer Survey', desc: 'Survey de Graph Transformers en bioinformática', status: 'completed', progress: 100, tokens: '2.1M', time: '08:45:00' },
+  { name: 'Few-Shot Vision Paper', desc: 'Artículo sobre meta-learning few-shot para CV', status: 'active', progress: 23, tokens: '312K', time: '01:08:12' },
+  { name: 'RLHF Ablation Study', desc: 'Estudio de ablación en RLHF para LLMs', status: 'failed', progress: 78, tokens: '1.5M', time: '—' },
+  { name: 'Diffusion Audio Gen', desc: 'Modelos de difusión para generación de audio', status: 'completed', progress: 100, tokens: '3.4M', time: '12:20:55' }
+];
+
+const steps = [
+  { num: 1, name: 'Formulación del Problema', agent: 'Ideador', status: 'done', justification: 'Se descartó el enfoque de búsqueda aleatoria por su ineficiencia computacional. Se seleccionó NAS basado en RL con reward multi-objectivo.', code: 'def formulate_problem(hypothesis):\n    space = search_space(\n        ops=[DWConv, SEBlock, ASPP],\n        depth_range=(4, 16),\n        width_mult=(0.5, 2.0)\n    )\n    return MultiObjectiveSpace(space)' },
+  { num: 2, name: 'Revisión Bibliográfica', agent: 'RAG Bibliotecario', status: 'done', justification: 'Se encontraron 347 papers relevantes en arXiv/ACL/NeurIPS. Las fuentes clave: Zoph & Le (2017), Liu et al. (2018) DARTS, Real et al. (2020).', code: '# Papers encontrados via RAG:\nquery = "neural architecture search edge"\ntop_papers = rag.search(query,\n    sources=["arxiv", "dblp"],\n    n=50)\n# → 347 papers, top-10 relevant' },
+  { num: 3, name: 'Implementación del Search Space', agent: 'Coder', status: 'done', justification: 'El search space se implementó con diferentesiable operations para permitir gradient-based optimization. Se usó cifar10 como dataset candidato.', code: 'class CellBuilder:\n    def build(self):\n        ops = [\n            nn.DWConv(kernel=3),\n            SEBlock(channels=64),\n            MultiHeadASPP(rates=[1,2,4]),\n        ]\n        return concat(ops)' },
+  { num: 4, name: 'Ejecución en Sandbox', agent: 'Sandbox', status: 'done', justification: 'Se ejecutó 50 generaciones con batch=32 en GPU A100. Memoria pico: 12.4GB. Sin errores de compatibilidad detectados.', code: '# Sandbox execution log:\nGen 50/50 | avg_reward=0.847\nMemory: 12.4/16 GB\nAccuracy: 94.2% (CIFAR-10)\nFLOPs: 89M | Params: 1.2M' },
+  { num: 5, name: 'Análisis de Resultados', agent: 'Analista', status: 'progress', justification: '', code: '' },
+  { num: 6, name: 'Escritura del Manuscrito', agent: 'Redactor LaTeX', status: 'waiting', justification: '', code: '' },
+  { num: 7, name: 'Revisión Adversarial', agent: 'Revisor Adversarial', status: 'waiting', justification: '', code: '' },
+  { num: 8, name: 'Compilación Final', agent: 'Sistema', status: 'waiting', justification: '', code: '' }
+];
+
+const terminalLogs = [
+  { ts: '14:23:01', agent: 'ideador', tag: 'tag-ideador', text: '💭 [CoT] Analizando el espacio de búsqueda... La hipótesis central sugiere que un enfoque híbrido EA+RL puede reducir la complejidad O(n²) a O(n log n). Descartando gradient-based NAS por su tendencia a soluciones simétricas.', cls: 'thinking' },
+  { ts: '14:23:15', agent: 'rag', tag: 'tag-rag', text: '📚 Consultando arXiv con embeddings de 347 papers. Top-k retrieval para "neural architecture search multi-objective edge". Saliencia promedio: 0.892.', cls: '' },
+  { ts: '14:23:22', agent: 'coder', tag: 'tag-coder', text: '💻 Generando código del search space con operations: [DWConv, SEBlock, ASPP, DepthWisePool]. Compilando module graph...', cls: '' },
+  { ts: '14:23:30', agent: 'sandbox', tag: 'tag-sandbox', text: '⚙️ Sandbox init → Docker container nvidia/cuda:12.4-runtime-ubuntu22.04 | torch=2.5.1 | python=3.11 | GPU=A100-SXM4-80GB', cls: '' },
+  { ts: '14:23:45', agent: 'sandbox', tag: 'tag-sandbox', text: '⚡ Ejecutando benchmark gen 23/50... Accuracy: 93.7% | FLOPs: 87M | Latency: 4.8ms → Reward: 0.831 ✓', cls: 'success' },
+  { ts: '14:24:02', agent: 'analista', tag: 'tag-analista', text: '📊 Calculando Pareto frontier entre accuracy y FLOPs... Encontrados 12 no-dominados. El mejor trade-off: arch_id=347 con acc=94.2% y flops=89M.', cls: '' },
+];
+
+// ════════════════════════════════════════
+// INITIALIZE PIPELINES
+// ════════════════════════════════════════
+
+function renderPipelines(filter = 'all') {
+  const container = document.getElementById('pipeline-list');
+  const filtered = filter === 'all' ? pipelineData : pipelineData.filter(p => p.status === filter);
+
+  container.innerHTML = filtered.map((p, i) => {
+    const statusClass = p.status;
+    const badgeClass = `badge-${p.status}`;
+    const badgeText = { active: 'Activa', completed: 'Completada', failed: 'Fallida', paused: 'Pausada' };
+    const progressClass = p.status === 'completed' ? 'progress-fill-completed' : p.status === 'paused' ? 'progress-fill-paused' : 'progress-fill-active';
+    return `
+      <div class="pipeline-item ${statusClass}" onclick="selectPipeline(this)">
+        <div class="pipeline-header">
+          <span class="pipeline-name">${p.name}</span>
+          <span class="pipeline-badge ${badgeClass}">${badgeText[p.status]}</span>
+        </div>
+        <div class="pipeline-desc">${p.desc}</div>
+        <div class="pipeline-progress">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill ${progressClass}" style="width:${p.progress}%"></div>
+          </div>
+          <span class="progress-text">${p.progress}%</span>
+        </div>
+        <div class="pipeline-meta">
+          <span>${p.tokens} tokens</span>
+          <span>${p.time}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterPipelines(filter, btn) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderPipelines(filter);
+}
+
+function selectPipeline(el) {
+  document.querySelectorAll('.pipeline-item').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ════════════════════════════════════════
+// RENDER STEPS
+// ════════════════════════════════════════
+
+function renderSteps() {
+  const container = document.getElementById('step-list');
+  container.innerHTML = steps.map(s => {
+    const numClass = s.status === 'done' ? 'step-num-done' : s.status === 'progress' ? 'step-num-progress' : 'step-num-waiting';
+    const dotClass = s.status === 'done' ? 'dot-done' : s.status === 'progress' ? 'dot-progress' : 'dot-waiting';
+    return `
+      <div class="step-card">
+        <div class="step-header" onclick="toggleStepBody(this)">
+          <div class="step-number ${numClass}">${s.num}</div>
+          <div class="step-info">
+            <div class="step-name">${s.name}</div>
+            <div class="step-agent">${s.agent}</div>
+          </div>
+          <div class="step-status-dot ${dotClass}"></div>
+        </div>
+        <div class="step-body" style="display:none;">
+          ${s.justification ? `<div class="step-justification"><strong>Por qué:</strong> ${s.justification}</div>` : ''}
+          ${s.code ? `<div class="step-code">${s.code.replace(/\n/g, '<br>')}</div>` : ''}
+          ${s.status === 'done' ? '<button class="btn-reenact" onclick="reenactStep(' + s.num + ')">🔄 Re-ejecutar Paso</button>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleStepBody(header) {
+  const body = header.nextElementSibling;
+  body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
+function reenactStep(num) {
+  addTerminalLog('sandbox', 'tag-sandbox', `🔄 Re-ejecutando paso ${num}...`, '');
+  setTimeout(() => {
+    addTerminalLog('sandbox', 'tag-sandbox', `✅ Paso ${num} re-ejecutado exitosamente. Resultados actualizados.`, 'success');
+  }, 1500);
+}
+
+// ════════════════════════════════════════
+// TERMINAL
+// ════════════════════════════════════════
+
+function addTerminalLog(agent, tag, text, cls = '') {
+  const container = document.getElementById('terminal-content');
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8);
+  const line = document.createElement('div');
+  line.className = 'terminal-line';
+  line.innerHTML = `<span class="terminal-timestamp">${ts}</span><span class="terminal-agent-tag ${tag}">${agent}</span><span class="terminal-text ${cls}">${text}</span>`;
+  container.appendChild(line);
+  container.scrollTop = container.scrollHeight;
+}
+
+function switchTerminalTab(tab, btn) {
+  document.querySelectorAll('.terminal-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const container = document.getElementById('terminal-content');
+  if (tab === 'cot') addTerminalLog('ideador', 'tag-ideador', '💭 [CoT] Continuando razonamiento con chain-of-thought...', 'thinking');
+  else if (tab === 'logs') addTerminalLog('system', 'tag-sandbox', '📋 System log: pipeline_heartbeat → OK | memory_usage: 4.2GB/16GB', '');
+  else addTerminalLog('sandbox', 'tag-sandbox', '🔍 Sandbox trace: docker exec kiwis-sandbox ls -la /workspace/artifacts', '');
+}
+
+// ════════════════════════════════════════
+// GRAPH VISUALIZATION
+// ════════════════════════════════════════
+
+let graphCanvas, graphCtx;
+let animFrame;
+let hoverAgent = null;
+let nodePositions = [];
+
+function initGraph() {
+  graphCanvas = document.getElementById('graph-canvas');
+  graphCtx = graphCanvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // Position nodes in a circle
+  const cx = () => graphCanvas.width / 2;
+  const cy = () => graphCanvas.height / 2;
+  const r = Math.min(graphCanvas.width, graphCanvas.height) * 0.3;
+
+  agents.forEach((a, i) => {
+    const angle = (i / agents.length) * Math.PI * 2 - Math.PI / 2;
+    a.x = cx() + r * Math.cos(angle);
+    a.y = cy() + r * Math.sin(angle);
+    a.baseX = a.x;
+    a.baseY = a.y;
+    nodePositions.push({ x: cx(), y: cy() }); // center node position
+  });
+
+  graphCanvas.addEventListener('mousemove', handleGraphHover);
+  graphCanvas.addEventListener('mouseleave', () => {
+    document.getElementById('node-tooltip').classList.remove('visible');
+    hoverAgent = null;
+  });
+
+  animateGraph();
+}
+
+function resizeCanvas() {
+  const container = document.getElementById('graph-container');
+  graphCanvas.width = container.clientWidth;
+  graphCanvas.height = container.clientHeight;
+
+  const cx = graphCanvas.width / 2;
+  const cy = graphCanvas.height / 2;
+  const r = Math.min(graphCanvas.width, graphCanvas.height) * 0.3;
+
+  agents.forEach((a, i) => {
+    const angle = (i / agents.length) * Math.PI * 2 - Math.PI / 2;
+    a.baseX = cx + r * Math.cos(angle);
+    a.baseY = cy + r * Math.sin(angle);
+    a.x = a.baseX;
+    a.y = a.baseY;
+  });
+
+  nodePositions = [{ x: cx, y: cy }];
+}
+
+function drawGraph(time) {
+  const ctx = graphCtx;
+  const w = graphCanvas.width;
+  const h = graphCanvas.height;
+
+  // Background with subtle grid
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle radial gradient background
+  const grad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w,h)/2);
+  grad.addColorStop(0, 'rgba(59,130,246,0.04)');
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(42,58,92,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 60) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+  for (let y = 0; y < h; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Draw edges
+  const centerNode = nodePositions[0];
+  agents.forEach(a => {
+    // Pulse connection to center
+    const isActive = a.status === 'thinking' || a.status === 'executing';
+    ctx.beginPath();
+    ctx.moveTo(centerNode.x, centerNode.y);
+
+    if (isActive) {
+      const pulse = Math.sin(time * 0.003 + agents.indexOf(a)) * 15;
+      ctx.lineTo(a.baseX + Math.cos(time*0.002 + agents.indexOf(a)*0.7) * pulse, a.baseY + Math.sin(time*0.002 + agents.indexOf(a)*0.7) * pulse);
+    } else {
+      ctx.lineTo(a.x, a.y);
+    }
+
+    const edgeAlpha = isActive ? 0.35 : 0.1;
+    ctx.strokeStyle = `rgba(${hexToRgb(a.color)}, ${edgeAlpha})`;
+    ctx.lineWidth = isActive ? 2 : 1;
+    if (isActive) {
+      ctx.shadowColor = a.color;
+      ctx.shadowBlur = 8;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Data flow particles
+    if (isActive) {
+      const particleT = ((time * 0.001 + agents.indexOf(a) * 0.3) % 1);
+      const px = centerNode.x + (a.baseX - centerNode.x) * particleT;
+      const py = centerNode.y + (a.baseY - centerNode.y) * particleT;
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fillStyle = a.color;
+      ctx.shadowColor = a.color;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  });
+
+  // Inter-agent edges (connections between agents)
+  const edgeAgents = [[0,2],[1,3],[3,4],[4,5],[5,6],[0,1]];
+  edgeAgents.forEach(([i, j]) => {
+    const ai = agents[i], aj = agents[j];
+    ctx.beginPath();
+    ctx.moveTo(ai.x, ai.y);
+    ctx.lineTo(aj.x, aj.y);
+    ctx.strokeStyle = `rgba(${hexToRgb(ai.color)}, ${isActiveAgent(ai) || isActiveAgent(aj) ? 0.2 : 0.06})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Draw nodes
+  agents.forEach((a, i) => {
+    const timeOffset = Math.sin(time * 0.002 + i * 1.1) * 8;
+    a.x = a.baseX + Math.cos(time * 0.0015 + i * 0.9) * timeOffset;
+    a.y = a.baseY + Math.sin(time * 0.0015 + i * 0.9) * timeOffset;
+
+    // Glow
+    const isHovered = hoverAgent === a;
+    const statusGlow = (a.status === 'thinking' || a.status === 'executing');
+    const glowR = isHovered ? 50 : (statusGlow ? 35 : 20);
+    const glowAlpha = isHovered ? 0.4 : (statusGlow ? 0.25 : 0.1);
+
+    const glowGrad = ctx.createRadialGradient(a.x, a.y, a.size * 0.8, a.x, a.y, glowR);
+    glowGrad.addColorStop(0, `rgba(${hexToRgb(a.color)}, ${glowAlpha})`);
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Node circle
+    const nodeGrad = ctx.createRadialGradient(a.x - a.size*0.25, a.y - a.size*0.25, 0, a.x, a.y, a.size);
+    nodeGrad.addColorStop(0, lightenColor(a.color, 30));
+    nodeGrad.addColorStop(1, darkenColor(a.color, 30));
+
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, a.size, 0, Math.PI * 2);
+    ctx.fillStyle = nodeGrad;
+    ctx.shadowColor = a.color;
+    ctx.shadowBlur = statusGlow ? 15 : (isHovered ? 12 : 6);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Border ring
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, a.size, 0, Math.PI * 2);
+    ctx.strokeStyle = isHovered ? a.color : `rgba(${hexToRgb(a.color)}, 0.6)`;
+    ctx.lineWidth = isHovered ? 3 : 1.5;
+    ctx.stroke();
+
+    // Status ring (animated)
+    if (statusGlow) {
+      const statusAngle = time * 0.004 + i;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.size + 4, statusAngle, statusAngle + Math.PI * 0.6);
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Icon
+    ctx.font = `${a.size * 0.8}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(a.icon, a.x, a.y);
+
+    // Label below
+    ctx.font = `600 ${a.id === 'rag' ? '10' : '11'}px 'Inter', sans-serif`;
+    ctx.fillStyle = isHovered ? '#ffffff' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText(a.name, a.x, a.y + a.size + 16);
+
+    // Status label below agent name
+    const statusLabel = agentStatusLabels[a.status];
+    ctx.font = `${a.id === 'rag' ? '9' : '10'}px 'JetBrains Mono', monospace`;
+    ctx.fillStyle = a.color;
+    ctx.fillText(statusLabel, a.x, a.y + a.size + 32);
+
+    // Center node
+    if (i === agents.length - 1) {
+      const cxNode = centerNode;
+      ctx.beginPath();
+      ctx.arc(cxNode.x, cxNode.y, 30, 0, Math.PI * 2);
+      const cxGrad = ctx.createRadialGradient(cxNode.x, cxNode.y, 0, cxNode.x, cxNode.y, 30);
+      cxGrad.addColorStop(0, 'rgba(59,130,246,0.5)');
+      cxGrad.addColorStop(1, 'rgba(59,130,246,0.1)');
+      ctx.fillStyle = cxGrad;
+      ctx.shadowColor = '#3b82f6';
+      ctx.shadowBlur = 20;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.font = '700 11px Inter, sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText('SWARM', cxNode.x, cxNode.y + 2);
+    }
+  });
+}
+
+function isActiveAgent(a) { return a.status === 'thinking' || a.status === 'executing'; }
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `${r},${g},${b}`;
+}
+
+function lightenColor(hex, amount) {
+  let r = parseInt(hex.slice(1,3), 16);
+  let g = parseInt(hex.slice(3,5), 16);
+  let b = parseInt(hex.slice(5,7), 16);
+  r = Math.min(255, r + amount);
+  g = Math.min(255, g + amount);
+  b = Math.min(255, b + amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+function darkenColor(hex, amount) {
+  let r = parseInt(hex.slice(1,3), 16);
+  let g = parseInt(hex.slice(3,5), 16);
+  let b = parseInt(hex.slice(5,7), 16);
+  r = Math.max(0, r - amount);
+  g = Math.max(0, g - amount);
+  b = Math.max(0, b - amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+function handleGraphHover(e) {
+  const rect = graphCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  let found = null;
+  agents.forEach(a => {
+    const dx = mx - a.x;
+    const dy = my - a.y;
+    if (Math.sqrt(dx*dx + dy*dy) < a.size + 10) found = a;
+  });
+
+  const tooltip = document.getElementById('node-tooltip');
+  if (found) {
+    hoverAgent = found;
+    tooltip.classList.add('visible');
+    tooltip.style.left = (e.clientX + 16) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+    document.getElementById('tooltip-name').textContent = `${found.icon} ${found.name}`;
+    document.getElementById('tooltip-name').style.color = found.color;
+    document.getElementById('tooltip-status').innerHTML = `<span style="color:${found.color}">${agentStatusLabels[found.status]}</span>`;
+  } else {
+    hoverAgent = null;
+    tooltip.classList.remove('visible');
+  }
+}
+
+function animateGraph(time) {
+  drawGraph(time || performance.now());
+  animFrame = requestAnimationFrame(animateGraph);
+}
+
+// ════════════════════════════════════════
+// COST COUNTER
+// ════════════════════════════════════════
+
+let tokenCount = 2847391;
+let dollarCost = 0;
+
+function updateCost() {
+  const addedTokens = Math.floor(Math.random() * 500) + 100;
+  tokenCount += addedTokens;
+  dollarCost += addedTokens * 0.000003;
+  document.getElementById('token-count').textContent = tokenCount.toLocaleString();
+  document.getElementById('cost-display').textContent = '$' + dollarCost.toFixed(4);
+}
+
+function updateUptime() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('uptime').textContent = `${h}:${m}:${s}`;
+}
+
+// ════════════════════════════════════════
+// MODAL
+// ════════════════════════════════════════
+
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+}
+
+function closeModalOutside(e) {
+  if (e.target === e.currentTarget) closeModal();
+}
+
+function toggleAgent(btn) {
+  btn.classList.toggle('selected');
+}
+
+function launchResearch() {
+  const title = document.getElementById('research-title').value || 'Untitled Research';
+  addTerminalLog('ideador', 'tag-ideador', `🚀 Iniciando investigación: "${title}"`, 'thinking');
+  closeModal();
+
+  agents.forEach(a => { a.status = 'executing'; });
+  setTimeout(() => { addTerminalLog('rag', 'tag-rag', '📚 Pipeline de investigación iniciado. Swarm activado.', ''); }, 500);
+}
+
+// ════════════════════════════════════════
+// RESULTS PANEL
+// ════════════════════════════════════════
+
+function toggleResults() {
+  const panel = document.getElementById('results-panel');
+  const btn = document.getElementById('results-toggle');
+  panel.classList.toggle('active');
+  btn.textContent = panel.classList.contains('active') ? '📄 Ocultar Resultados ▴' : '📄 Ver Resultados ▾';
+}
+
+// ════════════════════════════════════════
+// INSPECTOR TABS
+// ════════════════════════════════════════
+
+function switchInspectorTab(tab, btn) {
+  document.querySelectorAll('.inspector-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ════════════════════════════════════════
+// INITIALIZATION
+// ════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderPipelines();
+  renderSteps();
+  initGraph();
+
+  // Seed initial terminal logs
+  const seedLogs = [
+    { agent: 'ideador', tag: 'tag-ideador', text: '💭 [CoT] Iniciando pipeline de investigación... Hipótesis: NAS con reward multi-objectivo puede reducir la complejidad computacional.', cls: 'thinking' },
+    { agent: 'rag', tag: 'tag-rag', text: '📚 Indexando corpus arXiv: 1.2M papers | embedding model: sentence-transformers/all-MiniLM-L6-v2', cls: '' },
+    { agent: 'coder', tag: 'tag-coder', text: '💻 Clonando repositorio base → kiwis-search-space v2.1.0', cls: '' },
+  ];
+
+  let delay = 0;
+  seedLogs.forEach(log => {
+    setTimeout(() => addTerminalLog(log.agent, log.tag, log.text, log.cls), delay);
+    delay += 800;
+  });
+
+  // Periodic updates
+  setInterval(updateCost, 2000);
+  setInterval(updateUptime, 1000);
+});
+</script>
+</body>
+</html>
