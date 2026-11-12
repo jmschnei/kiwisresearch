@@ -2,135 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Base styles ─── */
 @layer base {
-  html, body, #root {
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  }
-
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+  html, body, #root { height: 100%; width: 100%; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
 }
 
-/* ─── Components ─── */
 @layer components {
-  .glass-panel {
-    @apply bg-dark-card/80 backdrop-blur-xl border border-cyber-blue/20 rounded-2xl shadow-lg;
-  }
-
-  .glow-border {
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1),
-                inset 0 0 20px rgba(59, 130, 246, 0.03);
-  }
-
-  .neon-text-blue {
-    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
-  }
-
-  .neon-text-green {
-    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
-  }
-
-  .neon-text-purple {
-    text-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 0 20px rgba(168, 85, 247, 0.3);
-  }
-
-  .gradient-hero {
-    @apply bg-gradient-to-r from-cyber-blue via-cyber-purple to-cyber-pink;
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
-  }
-
-  .btn-primary {
-    @apply bg-gradient-to-r from-cyber-blue via-cyber-purple to-cyber-pink 
-           border-none rounded-xl text-white font-semibold text-sm px-6 py-2.5
-           shadow-lg shadow-cyber-blue/30 hover:shadow-cyber-blue/50
-           transition-all duration-300 hover:-translate-y-0.5;
-  }
-
-  .btn-ghost {
-    @apply bg-dark-tertiary border border-dark-primary/40 rounded-xl 
-           text-gray-400 text-sm px-6 py-2.5 hover:bg-dark-hover transition-all duration-200;
-  }
-
-  .terminal-font {
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  .pipeline-card {
-    @apply bg-dark-card border border-dark-primary/40 rounded-xl p-4 
-           transition-all duration-300 cursor-pointer hover:border-cyber-blue/40
-           hover:-translate-x-0.5 relative overflow-hidden;
-  }
-
-  .pipeline-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
-    width: 3px; height: 100%;
-    border-radius: 3px 0 0 3px;
-  }
-
-  .pipeline-card.active::before { @apply bg-cyber-blue; }
-  .pipeline-card.completed::before { @apply bg-cyber-green; }
-  .pipeline-card.failed::before { @apply bg-cyber-red; }
-  .pipeline-card.paused::before { @apply bg-cyber-yellow; }
-
-  .agent-node-ring {
-    @apply absolute inset-0 rounded-full border-2 transition-all duration-500;
-  }
-
-  .status-dot-active {
-    @apply w-2 h-2 rounded-full bg-cyber-green animate-pulse shadow-lg shadow-cyber-green/50;
-  }
-
-  .progress-bar {
-    @apply w-full h-1.5 bg-dark-primary/60 rounded-full overflow-hidden;
-  }
-
-  .progress-bar-fill {
-    @apply h-full rounded-full transition-all duration-700 ease-out;
-  }
-
-  .step-card {
-    @apply bg-dark-card border border-dark-primary/40 rounded-lg overflow-hidden 
-           transition-all duration-300 hover:border-cyber-purple/40;
-  }
-
-  .modal-backdrop {
-    @apply fixed inset-0 bg-black/60 backdrop-blur-md z-[1000] 
-           flex items-center justify-center animate-fade-in;
-  }
-
-  .modal-content {
-    @apply bg-dark-secondary border border-dark-primary/40 rounded-2xl w-full max-w-xl 
-           max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/40
-           animate-slide-up;
-  }
-
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slide-up { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-
-  .form-field-input {
-    @apply w-full px-4 py-2.5 bg-dark-tertiary border border-dark-primary/40 rounded-lg 
-           text-gray-200 text-sm focus:border-cyber-blue focus:ring-2 focus:ring-cyber-blue/20 
-           outline-none transition-all duration-200;
-  }
-
-  .form-field-select {
-    @apply form-field-input appearance-none cursor-pointer pr-10;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 12L2 6h12z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-  }
-
-  .metric-card {
-    @apply bg-dark-card border border-dark-primary/40 rounded-xl p-4 hover:border-cyber-green/30 transition-all;
-  }
+  .glass-panel { @apply bg-dark-card/80 backdrop-blur-xl border border-cyber-blue/20 rounded-2xl shadow-lg; }
+  .btn-primary { @apply bg-gradient-to-r from-cyber-blue via-cyber-purple to-cyber-pink border-none rounded-xl text-white font-semibold text-sm px-6 py-2.5 shadow-lg shadow-cyber-blue/30 hover:-translate-y-0.5 transition-all duration-300; }
+  .btn-ghost { @apply bg-dark-tertiary border border-dark-primary/40 rounded-xl text-gray-400 text-sm px-6 py-2.5 hover:bg-dark-hover transition-all duration-200; }
+  .terminal-font { font-family: JetBrains Mono, monospace; }
+  .pipeline-card { @apply bg-dark-card border border-dark-primary/40 rounded-xl p-4 transition-all duration-300 cursor-pointer hover:border-cyber-blue/40 relative overflow-hidden; }
+  .modal-backdrop { @apply fixed inset-0 bg-black/60 backdrop-blur-md z-[1000] flex items-center justify-center; }
+  .modal-content { @apply bg-dark-secondary border border-dark-primary/40 rounded-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/40; }
+  .form-field-input { @apply w-full px-4 py-2.5 bg-dark-tertiary border border-dark-primary/40 rounded-lg text-gray-200 text-sm focus:border-cyber-blue outline-none transition-all duration-200; }
+  .metric-card { @apply bg-dark-card border border-dark-primary/40 rounded-xl p-4 hover:border-cyber-green/30 transition-all; }
 }
+
+@layer utilities {
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .animate-fade-in { animation: fade-in 0.3s ease forwards; }
+}
+
+@keyframes fadeInLine { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.animate-fade-line { animation: fadeInLine 0.3s ease; }

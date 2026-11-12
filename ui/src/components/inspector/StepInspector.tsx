@@ -1,5 +1,5 @@
 import React from 'react';
-import { Replay, ChevronDown, ChevronUp } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 
 interface StepInfo {
   num: number;
@@ -20,8 +20,8 @@ interface Props {
 }
 
 const statusDot: Record<string, string> = {
-  done: 'bg-cyber-green shadow shadow-cyber-green/50', progress: 'bg-cyber-blue animate-pulse shadow shadow-cyber-blue/50',
-  waiting: 'bg-gray-600', failed: 'bg-cyber-red shadow shadow-cyber-red/50',
+  done: 'bg-cyber-green shadow-lg shadow-cyber-green/50', progress: 'bg-cyber-blue animate-pulse shadow-lg shadow-cyber-blue/50',
+  waiting: 'bg-gray-600', failed: 'bg-cyber-red shadow-lg shadow-cyber-red/50',
 };
 
 const stepNumBg: Record<string, string> = {
@@ -44,7 +44,7 @@ export const StepInspector: React.FC<Props> = ({ steps, activeTab, onTabChange, 
     {/* Step list */}
     <div className="flex-1 overflow-y-auto p-3 space-y-2">
       {steps.map((s) => (
-        <div key={s.num} className={`step-card`}>
+        <div key={s.num} className="step-card">
           <div onClick={() => onToggleStep(s.num)} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-white/[0.02]">
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${stepNumBg[s.status]}`}>
               {s.num}
@@ -70,7 +70,7 @@ export const StepInspector: React.FC<Props> = ({ steps, activeTab, onTabChange, 
               )}
               {s.status === 'done' && (
                 <button onClick={() => onReexecute(s.num)} className="w-full flex items-center justify-center gap-1.5 py-2 border border-cyber-blue/40 text-cyber-blue rounded-lg text-[11px] font-semibold hover:bg-cyber-blue/[0.1] transition-all">
-                  <Replay className="w-3 h-3" /> Re-ejecutar Paso {s.num}
+                  <RotateCcw className="w-3 h-3" /> Re-ejecutar Paso {s.num}
                 </button>
               )}
             </div>

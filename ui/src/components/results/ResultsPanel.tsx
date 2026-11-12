@@ -32,7 +32,7 @@ export const ResultsPanel: React.FC<Props> = ({ isOpen, onToggle }) => (
             <p className="mb-1"><strong>II. METHODOLOGY</strong></p>
             <p className="mb-2 text-gray-600">Our proposed EAS-RL framework operates in three phases: (1) Search space definition via differentiable architecture parameters...</p>
             <div className="text-center p-1.5 bg-gray-50 rounded border border-gray-200 font-mono text-[6px]">
-              Architecture: ConvBlock → DepthWiseSeparable → AttentionHead → ASPP<br>
+              Architecture: ConvBlock → DepthWiseSeparable → AttentionHead → ASPP<br />
               Params: 1.2M | FLOPs: 89M | Latency: 4.2ms | mAP@0.5: 0.847
             </div>
           </div>

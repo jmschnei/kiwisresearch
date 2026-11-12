@@ -16,7 +16,7 @@
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
     "d3-force": "^3.0.0",
-    "lucide-react": "^0.450.0",
+    "lucide-react": "^0.451.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",

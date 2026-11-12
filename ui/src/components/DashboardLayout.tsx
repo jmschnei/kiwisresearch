@@ -211,3 +211,5 @@ export const DashboardLayout: React.FC<Props> = () => {
     </div>
   );
 };
+
+export default DashboardLayout;

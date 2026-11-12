@@ -19,7 +19,7 @@ export const ProgressBar: React.FC<Props> = ({ progress, color = 'blue', height 
   <div className="flex items-center gap-3">
     <div className="progress-bar" style={{ height: `${height}px` }}>
       <div
-        className={`progress-bar-fill bg-gradient-to-r ${gradients[color as keyof typeof gradients] || 'from-cyber-blue to-cyber-cyan'}`}
+        className={`progress-bar-fill bg-gradient-to-r ${gradients[color as keyof typeof gradients]}`}
         style={{ width: `${Math.min(100, Math.max(0, progress))}%`, height: `${height}px` }}
       />
     </div>
