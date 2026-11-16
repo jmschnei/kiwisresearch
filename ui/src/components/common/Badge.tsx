@@ -7,7 +7,7 @@ interface BadgeProps {
   dot?: boolean;
 }
 
-const colorMap: Record<BadgeProps['variant'], string> = {
+const colorMap: Record<NonNullable<BadgeProps['variant']>, string> = {
   blue: 'bg-cyber-blue/20 text-cyber-blue border-cyber-blue/30',
   cyan: 'bg-cyber-cyan/20 text-cyber-cyan border-cyber-cyan/30',
   green: 'bg-cyber-green/20 text-cyber-green border-cyber-green/30',

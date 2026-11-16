@@ -1,183 +1,135 @@
 /**
- * Service layer for communicating with the FastAPI backend.
- * Uses native Fetch API with AbortController for cancellable requests,
- * typed request/response DTOs, and automatic retry logic.
+ * REST client for the Kiwis FastAPI backend.
+ * Every function resolves to the unwrapped `data` of the `{ success, data }` envelope
+ * and rejects with an `ApiError` (status, code, message) on failure.
  */
 
 import type {
   ApiResponse,
-  ApiError,
-  CreateResearchRequest,
-  UpdatePipelineStatusRequest,
-  ReexecuteStepRequest,
-  PipelineJob,
-  PaperResult,
+  BackendConfig,
   CostSnapshot,
-  SwarmHealth,
+  CreateResearchRequest,
+  PaperResult,
+  PipelineJob,
   ResearchStep,
+  ReviewScores,
+  SwarmHealth,
+  AgentNode,
+  TerminalLog,
+  Artifact,
+  UpdatePipelineStatusRequest,
 } from '@/types/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-
-// ─── Fetch wrapper with typed response + error handling ───
-
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options?.headers ?? {}),
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new ApiError(
-        `HTTP ${response.status}`,
-        (data as ApiError)?.message || `Request failed with status ${response.status}`,
-        { method: 'GET', url, status: response.status },
-      );
-    }
-
-    return data as ApiResponse<T>;
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError('TIMEOUT', `Request to ${url} timed out after 30s`);
-    }
-
-    throw error;
-  }
-}
-
-// ─── Pipeline endpoints ───
-
-export const pipelineApi = {
-  /** List all pipeline jobs */
-  list: () => fetchJson<PipelineJob[]>(`${API_BASE}/pipelines`),
-
-  /** Get details of a specific pipeline */
-  get: (id: string) => fetchJson<PipelineJob>(`${API_BASE}/pipelines/${id}`),
-
-  /** Create a new research pipeline */
-  create: (body: CreateResearchRequest) =>
-    fetchJson<{ pipelineId: string; status: string }>(`${API_BASE}/pipelines`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  /** Update pipeline status (pause/resume) */
-  updateStatus: (id: string, body: UpdatePipelineStatusRequest) =>
-    fetchJson<PipelineJob>(`${API_BASE}/pipelines/${id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
-
-  /** Delete a pipeline */
-  delete: (id: string) =>
-    fetchJson<void>(`${API_BASE}/pipelines/${id}`, { method: 'DELETE' }),
-
-  /** Get steps for a pipeline */
-  getSteps: (pipelineId: string) =>
-    fetchJson<ResearchStep[]>(`${API_BASE}/pipelines/${pipelineId}/steps`),
-
-  /** Re-execute a specific step */
-  reexecuteStep: (body: ReexecuteStepRequest) =>
-    fetchJson<{ success: boolean; newLogId: string }>(`${API_BASE}/pipelines/reexecute`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-};
-
-// ─── Swarm endpoints ───
-
-export const swarmApi = {
-  /** Get current swarm health status */
-  getHealth: () => fetchJson<SwarmHealth>(`${API_BASE}/swarm/health`),
-
-  /** Get all agent states */
-  getAgents: () => fetchJson<any[]>(`${API_BASE}/swarm/agents`),
-
-  /** Force restart an agent */
-  restartAgent: (agentId: string) =>
-    fetchJson<{ status: string }>(`${API_BASE}/swarm/${agentId}/restart`, { method: 'POST' }),
-};
-
-// ─── Cost tracking ───
-
-export const costApi = {
-  /** Get current cost snapshot */
-  getSnapshot: (pipelineId?: string) =>
-    fetchJson<CostSnapshot>(`${API_BASE}/costs${pipelineId ? `?pipeline_id=${pipelineId}` : ''}`),
-
-  /** Get cost history for a pipeline */
-  getHistory: (pipelineId: string, rangeDays = 30) =>
-    fetchJson<Array<{ date: string; tokens: number; costUsd: string }>>(
-      `${API_BASE}/costs/history?pipeline_id=${pipelineId}&days=${rangeDays}`,
-    ),
-
-  /** Get cost breakdown by agent */
-  getBreakdownByAgent: (pipelineId: string) =>
-    fetchJson<Record<string, { tokens: number; costUsd: string }>>(
-      `${API_BASE}/costs/breakdown/${pipelineId}`,
-    ),
-};
-
-// ─── Results / Paper viewer ───
-
-export const resultsApi = {
-  /** Get the compiled paper result */
-  getPaper: (pipelineId: string) => fetchJson<PaperResult>(`${API_BASE}/results/${pipelineId}/paper`),
-
-  /** List artifacts for a pipeline */
-  listArtifacts: (pipelineId: string) =>
-    fetchJson<any[]>(`${API_BASE}/results/${pipelineId}/artifacts`),
-
-  /** Download artifact by ID */
-  downloadArtifact: (pipelineId: string, artifactId: string) =>
-    `${API_BASE}/results/${pipelineId}/artifacts/${artifactId}/download`,
-
-  /** Get peer review scores */
-  getReviewScores: (pipelineId: string) =>
-    fetchJson<{ metrics: any[]; consensus: string }>(`${API_BASE}/results/${pipelineId}/review`),
-};
-
-// ─── Search & discovery ───
-
-export const searchApi = {
-  /** Search papers via RAG engine */
-  searchPapers: (query: string, n = 20) =>
-    fetchJson<any[]>(`${API_BASE}/search/papers?q=${encodeURIComponent(query)}&n=${n}`),
-
-  /** Suggest research directions */
-  suggestDirections: (domain: string, topic: string) =>
-    fetchJson<{ directions: string[]; confidence: number[] }>(
-      `${API_BASE}/search/suggest?domain=${domain}&topic=${encodeURIComponent(topic)}`,
-    ),
-};
-
-// ─── Custom ApiError class ───
+export const API_BASE: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+/** Origin of the backend (used for absolute links such as PDFs). */
+export const API_ORIGIN = new URL(API_BASE, window.location.href).origin;
 
 export class ApiError extends Error {
-  constructor(public code: string, message: string, public details?: Record<string, any>) {
+  constructor(
+    public code: string,
+    message: string,
+    public status?: number,
+  ) {
     super(message);
     this.name = 'ApiError';
   }
 }
 
-export default {
-  pipeline: pipelineApi,
-  swarm: swarmApi,
-  cost: costApi,
-  results: resultsApi,
-  search: searchApi,
+async function request<T>(path: string, options: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+    });
+    let body: (ApiResponse<T> & { code?: string; message?: string }) | null = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* non-JSON response */
+    }
+    if (!res.ok || body?.success === false) {
+      throw new ApiError(
+        body?.code ?? body?.error?.code ?? `HTTP_${res.status}`,
+        body?.message ?? body?.error?.message ?? `Request failed (${res.status})`,
+        res.status,
+      );
+    }
+    return body?.data as T;
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    if (e instanceof Error && e.name === 'AbortError') throw new ApiError('TIMEOUT', 'The request timed out');
+    throw new ApiError('NETWORK', 'Cannot reach the Kiwis backend. Is `kiwis serve` running?');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const json = (method: string, body?: unknown): RequestInit => ({
+  method,
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export const pipelineApi = {
+  list: () => request<PipelineJob[]>('/pipelines'),
+  get: (id: string) => request<PipelineJob>(`/pipelines/${id}`),
+  create: (body: CreateResearchRequest) =>
+    request<{ pipelineId: string; status: string }>('/pipelines', json('POST', body)),
+  updateStatus: (id: string, body: UpdatePipelineStatusRequest) =>
+    request<PipelineJob>(`/pipelines/${id}/status`, json('PATCH', body)),
+  remove: (id: string) => request<null>(`/pipelines/${id}`, json('DELETE')),
+  steps: (id: string) => request<ResearchStep[]>(`/pipelines/${id}/steps`),
+  logs: (id: string, limit = 300) => request<(TerminalLog & { pipelineId: string })[]>(`/pipelines/${id}/logs?limit=${limit}`),
+  reexecute: (pipelineId: string, stepNum: number) =>
+    request<{ success: boolean; newLogId: string }>('/pipelines/reexecute', json('POST', { pipelineId, stepNum })),
+};
+
+export const swarmApi = {
+  health: () => request<SwarmHealth>('/swarm/health'),
+  agents: () => request<AgentNode[]>('/swarm/agents'),
+};
+
+export const costApi = {
+  snapshot: (pipelineId?: string) =>
+    request<CostSnapshot>(`/costs${pipelineId ? `?pipeline_id=${pipelineId}` : ''}`),
+  breakdown: (pipelineId: string) =>
+    request<Record<string, { tokens: number; costUsd: string }>>(`/costs/breakdown/${pipelineId}`),
+};
+
+export const resultsApi = {
+  paper: (id: string) => request<PaperResult>(`/results/${id}/paper`),
+  review: (id: string) => request<ReviewScores>(`/results/${id}/review`),
+  artifacts: (id: string) => request<Artifact[]>(`/results/${id}/artifacts`),
+  artifactUrl: (id: string, artifactId: string) =>
+    `${API_BASE}/results/${id}/artifacts/${encodeURIComponent(artifactId)}/download`,
+  artifactText: async (id: string, artifactId: string): Promise<string> => {
+    const res = await fetch(resultsApi.artifactUrl(id, artifactId));
+    if (!res.ok) throw new ApiError(`HTTP_${res.status}`, 'Artifact not available', res.status);
+    return res.text();
+  },
+};
+
+export interface PaperHit {
+  id: string;
+  title?: string;
+  authors?: string[];
+  year?: number;
+  summary?: string;
+  source?: string;
+}
+
+export const searchApi = {
+  papers: (query: string, n = 20) =>
+    request<PaperHit[]>(`/search/papers?q=${encodeURIComponent(query)}&n=${n}`, {}, 60_000),
+};
+
+export const systemApi = {
+  config: () => request<BackendConfig>('/config'),
+  health: async () => {
+    const res = await fetch(`${API_ORIGIN}/health`);
+    if (!res.ok) throw new ApiError(`HTTP_${res.status}`, 'Backend not healthy', res.status);
+    return (await res.json()) as { status: string; version: string };
+  },
 };

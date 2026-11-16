@@ -170,3 +170,16 @@ def test_websocket_streams_events(tmp_path):
                     break
             assert {"pipeline_update", "step_update", "log_entry", "agent_status_change", "cost_update"} <= seen
         wait_for(c, pid)
+
+
+def test_config_endpoint_reports_availability_without_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-value")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with TestClient(make_app(tmp_path)) as c:
+        r = c.get("/api/v1/config")
+        data = r.json()["data"]
+        assert data["providers"]["openai"]["available"] is True
+        assert data["providers"]["anthropic"]["available"] is False
+        assert data["providers"]["ollama"]["available"] is True
+        assert data["agents"]["reviewer"]["provider"] in ("openai", "anthropic")
+        assert "sk-secret-value" not in r.text

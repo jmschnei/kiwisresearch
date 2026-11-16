@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -136,3 +137,32 @@ def review_view(job: Job) -> dict:
                             or "Sin objeciones"})
     verdict = str(feedback.get("overall_verdict", "")).strip().lower()
     return {"metrics": metrics, "consensus": VERDICT_TO_CONSENSUS.get(verdict, "borderline")}
+
+
+def config_view(settings) -> dict:
+    """Effective (non-secret) configuration: agents, provider availability, sandbox and memory."""
+    from ..models.factory import infer_provider_name
+
+    providers = {}
+    for name, cfg in settings.providers.providers.items():
+        env = cfg.api_key_env_var
+        providers[name] = {
+            "name": cfg.name, "type": cfg.provider_type.value, "defaultModel": cfg.default_model,
+            "baseUrl": cfg.base_url, "models": cfg.supported_models,
+            # Only report whether a key is present, never its value
+            "available": True if env is None else bool(os.environ.get(env)),
+            "apiKeyEnvVar": env,
+        }
+    agents = {}
+    for role in type(settings.agents).model_fields:
+        a = getattr(settings.agents, role)
+        agents[role] = {"model": a.model, "provider": a.provider or infer_provider_name(a.model),
+                        "temperature": a.temperature, "maxTokens": a.max_tokens, "enabled": a.enabled}
+    return {
+        "project": settings.project_name,
+        "agents": agents,
+        "providers": providers,
+        "sandbox": settings.sandbox.model_dump(),
+        "memory": settings.memory.model_dump(),
+        "pipeline": settings.pipeline.model_dump(),
+    }

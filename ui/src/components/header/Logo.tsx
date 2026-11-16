@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const Logo = () => (
-  <div className="flex items-center gap-3">
+  <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
     <div className="w-9 h-9 bg-gradient-to-br from-cyber-blue via-cyber-purple to-cyber-pink rounded-xl flex items-center justify-center text-lg shadow-lg shadow-cyber-blue/30">
       🧠
     </div>

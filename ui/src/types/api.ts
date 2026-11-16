@@ -1,3 +1,6 @@
+export * from './swarm';
+import type { ResearchType, ResearchDomain, PipelineStatus, StepStatus, AgentStatus } from './swarm';
+
 // ─── Request DTOs (send to FastAPI) ───
 
 export interface CreateResearchRequest {
@@ -5,10 +8,10 @@ export interface CreateResearchRequest {
   type: ResearchType;
   domain: ResearchDomain;
   hypothesis: string;
-  agentIds: string[];
-  model: string;
-  maxTokensPerIteration: number;
-  budgetUsd: number;
+  agentIds?: string[];
+  model?: string;
+  maxTokensPerIteration?: number;
+  budgetUsd?: number;
   depthLevel: 'fast' | 'standard' | 'deep' | 'max';
 }
 

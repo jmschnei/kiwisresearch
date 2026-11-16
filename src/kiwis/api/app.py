@@ -81,6 +81,10 @@ def create_app(
     async def health():
         return {"status": "ok", "version": API_VERSION}
 
+    @app.get(f"{PREFIX}/config")
+    async def get_config():
+        return _ok(views.config_view(settings))
+
     # ------------------------------------------------------------- pipelines
     @app.get(f"{PREFIX}/pipelines")
     async def list_pipelines():

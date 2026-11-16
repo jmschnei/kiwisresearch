@@ -1,98 +1,52 @@
 # KiwiSci Dashboard UI — React + TypeScript + FastAPI
 
-Interfaz de control y supervisión multiagente para investigación científica, conectada a un backend FastAPI.
+Interfaz web para lanzar, supervisar y revisar investigaciones del sistema multiagente Kiwis. Habla con el backend
+FastAPI (`kiwis serve`) por REST y WebSocket.
 
 ## Stack
 
-- **React 19** + **TypeScript** (strict mode)
-- **Vite 6** (build + dev server)
-- **Zustand** (state management con persistencia en localStorage)
-- **TanStack React Query v5** (data fetching, caching, background refetching)
-- **Tailwind CSS 3** (utility-first styling con tema cyber-dark personalizado)
-- **D3.js** (física de grafos interactiva)
-- **Recharts** (gráficos estadísticos)
-- **Lucide React** (iconografía)
+React 19 · TypeScript (strict) · Vite 6 · React Router 6 · TanStack Query 5 · Zustand · Tailwind CSS 3 · Recharts · Lucide
 
-## Estructura del proyecto
+## Páginas
 
-```
-ui/
-├── src/
-│   ├── types/          # Interfaces TypeScript + DTOs API
-│   │   ├── swarm.ts    # Tipos dominio (AgentNode, PipelineJob, etc.)
-│   │   └── api.ts      # Request/Response DTOs para FastAPI
-│   ├── services/       # Capa de comunicación con backend
-│   │   ├── api.ts      # Client REST con fetch wrapper + typed responses
-│   │   ├── websocket.ts# WebSocket singleton con auto-reconnect
-│   │   └── polling.ts  # Polling service (fallback/hybrid)
-│   ├── store/          # Estado global con Zustand
-│   │   ├── dashboard.ts # Store principal (pipelines, agents, logs, cost)
-│   │   └── config.ts    # Config persistente
-│   ├── hooks/          # Custom React hooks
-│   │   ├── useApi.ts       # Hooks de React Query (queries + mutations)
-│   │   ├── useWebSocket.ts # Hook para eventos en tiempo real
-│   │   └── useGraphPhysics.ts # Hook para simulación D3 force-directed
-│   ├── utils/          # Funciones auxiliares
-│   ├── components/     # Componentes React
-│   │   ├── common/         # Badge, Card, ProgressBar, Modal
-│   │   ├── header/         # Logo, CostDisplay, SwarmStatus, NewResearchModal
-│   │   ├── sidebar/        # PipelineList con filtros
-│   │   ├── pipeline-graph/ # AgentGraph (canvas D3 animado)
-│   │   ├── terminal/       # AgentTerminal (logs CoT en vivo)
-│   │   ├── inspector/      # StepInspector (pasos + razonamiento)
-│   │   ├── results/        # ResultsPanel (PDF preview + métricas)
-│   │   └── DashboardLayout.tsx  # Integración de todas las secciones
-│   ├── App.tsx           # Root app con QueryClientProvider
-│   ├── main.tsx          # Entry point React
-│   ├── index.css         # Tailwind + utilidades custom
-│   └── vite-env.d.ts     # Env type declarations
-├── public/
-├── package.json
-├── vite.config.ts        # Vite config con aliases + proxy /api → FastAPI
-├── tsconfig.json         # TS config (monorepo-style)
-├── tailwind.config.js    # Tema cyber-dark + animaciones custom
-├── postcss.config.js
-├── .env.example
-└── README.md
-```
+| Ruta | Página | Para qué sirve |
+|------|--------|----------------|
+| `/` | Inicio | Formulario de consulta: tema, hipótesis opcional, tipo, dominio y parámetros avanzados (modelo, profundidad, presupuesto). Avisa si falta el backend o las API keys. |
+| `/pipelines` | Investigaciones | Todas las ejecuciones con filtros, búsqueda, totales de tokens/coste, estado del enjambre y acciones (pausar, reanudar, eliminar). |
+| `/pipelines/:id` | Monitor | Seguimiento en vivo: grafo de agentes, terminal de logs, inspector de pasos (re-ejecución), pausar/reanudar/detener. |
+| `/pipelines/:id/results` | Resultados | Artículo y PDF, hipótesis/literatura/diseño/análisis, puntuaciones de la revisión por pares, artefactos (vista previa y descarga). |
+| `/library` | Biblioteca | Búsqueda de artículos en arXiv; permite lanzar una investigación a partir de un resultado. |
+| `/settings` | Ajustes | Estado de la conexión, proveedores LLM disponibles, modelo por agente y preferencias por defecto. |
 
-## API Endpoints (FastAPI backend esperado)
+## Arquitectura de datos
 
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/v1/pipelines` | Lista todas las pipelines |
-| POST | `/api/v1/pipelines` | Crea nueva investigación |
-| GET | `/api/v1/pipelines/{id}` | Detalles de una pipeline |
-| PATCH | `/api/v1/pipelines/{id}/status` | Pausa/reanuda pipeline |
-| DELETE | `/api/v1/pipelines/{id}` | Elimina pipeline |
-| GET | `/api/v1/pipelines/{id}/steps` | Pasos de una pipeline |
-| POST | `/api/v1/pipelines/reexecute` | Re-ejecuta un paso |
-| GET | `/api/v1/swarm/health` | Estado del swarm de agentes |
-| GET | `/api/v1/swarm/agents` | Estados individuales |
-| POST | `/api/v1/swarm/{agent}/restart` | Reinicia agente |
-| GET | `/api/v1/costs` | Snapshot de costos |
-| GET | `/api/v1/costs/history` | Historial de costos |
-| GET | `/api/v1/results/{id}/paper` | Paper compilado |
-| GET | `/api/v1/results/{id}/artifacts` | Artefactos generados |
-| GET | `/api/v1/search/papers` | Búsqueda RAG |
+- **React Query** es la fuente de verdad de los datos del servidor (`src/hooks/useApi.ts`).
+- **`useLiveSync`** (montado una vez en `AppShell`) conecta el WebSocket `/ws/events` e invalida las consultas afectadas
+  según los eventos (`pipeline_update`, `step_update`, `log_entry`, `agent_status_change`, `cost_update`). El polling cada
+  10 s queda solo como respaldo.
+- **Zustand** (`src/store/`) guarda solo estado de interfaz: logs en vivo por pipeline, pestañas, avisos y preferencias.
+- `src/services/api.ts` desenvuelve el sobre `{ success, data }` y lanza `ApiError` con `status`/`code`/`message`.
 
-### WebSocket Events
-
-| Tipo | Payload | Descripción |
-|------|---------|-------------|
-| `pipeline_update` | `{ pipelineId, progress, status, activeAgents }` | Actualización de progreso |
-| `step_update` | `{ pipelineId, stepNum, agent, status }` | Cambio de paso |
-| `log_entry` | `{ agent, text, type, timestamp }` | Nuevo log en terminal |
-| `agent_status_change` | `{ agentId, newStatus }` | Cambio de estado de agente |
-| `cost_update` | `{ tokensSinceLastUpdate, costUsd }` | Actualización de costo |
-
-## Desarrollo rápido
+## Desarrollo
 
 ```bash
+# Backend (en la raíz del repo)
+pip install -e ".[api]"
+kiwis serve -c kiwis_config.yaml          # → http://localhost:8000
+
+# Frontend
 cd ui
 npm install
-cp .env.example .env.local
-npm run dev    # → http://localhost:3000
+cp .env.example .env.local                # opcional: cambia VITE_API_BASE_URL / VITE_WS_URL
+npm run dev                               # → http://localhost:3000
+npm run build                             # typecheck + build de producción
 ```
 
-El proxy de Vite redirige `/api/*` al backend FastAPI en `http://localhost:8000`.
+Sin API keys los agentes funcionan en modo placeholder (contenido de ejemplo vacío); la página de inicio y los ajustes lo indican.
+Define `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` en el entorno del servidor, o activa Ollama en `kiwis_config.yaml`.
+
+## Notas
+
+- Los tokens y costes son **estimaciones** (≈4 caracteres por token y precios aproximados).
+- El backend guarda las investigaciones en memoria: al reiniciar `kiwis serve` desaparecen de la lista (los ficheros de cada
+  una quedan en `output/jobs/<id>/`).

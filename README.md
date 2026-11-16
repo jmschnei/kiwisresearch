@@ -92,6 +92,17 @@ print(f"Papers reviewed: {len(state.literature_review.get('papers', []))}")
 print(f"Paper PDF: {state.paper_draft.get('pdf_path')}")
 ```
 
+### Web Dashboard
+
+```bash
+pip install -e ".[api]"
+kiwis serve -c kiwis_config.yaml      # FastAPI backend on http://localhost:8000
+cd ui && npm install && npm run dev   # dashboard on http://localhost:3000
+```
+
+Launch a research from the home page, follow the agents live, and read the paper, review scores and artifacts on the
+results page. See [`ui/README.md`](ui/README.md) for the pages and the data flow.
+
 ## Project Structure
 
 ```

@@ -14,6 +14,11 @@ export const AgentGraph: React.FC<Props> = ({ agents, hoveredAgent, onHover }) =
   const animRef = useRef<number>(0);
   const timeRef = useRef(0);
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // Latest props are read through refs so the animation loop is not restarted on every update
+  const agentsRef = useRef(agents);
+  const hoveredRef = useRef(hoveredAgent);
+  agentsRef.current = agents;
+  hoveredRef.current = hoveredAgent;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,6 +37,7 @@ export const AgentGraph: React.FC<Props> = ({ agents, hoveredAgent, onHover }) =
     window.addEventListener('resize', resize);
 
     // Initialize positions in circle
+    const agents = agentsRef.current;
     const w = container.clientWidth;
     const h = container.clientHeight;
     const cx = w / 2, cy = h / 2;
@@ -48,6 +54,8 @@ export const AgentGraph: React.FC<Props> = ({ agents, hoveredAgent, onHover }) =
     });
 
     const draw = (t: number) => {
+      const agents = agentsRef.current;
+      const hoveredAgent = hoveredRef.current;
       timeRef.current = t;
       ctx.clearRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
 
@@ -151,7 +159,6 @@ export const AgentGraph: React.FC<Props> = ({ agents, hoveredAgent, onHover }) =
         ctx.textAlign = 'center';
         ctx.fillText(statusLabel, pos.x, pos.y + agent.size + 32);
 
-        positionsRef.current.set(agent.id, { x: pos.x, y: pos.y });
       });
 
       // Center node (SWARM)
@@ -170,7 +177,7 @@ export const AgentGraph: React.FC<Props> = ({ agents, hoveredAgent, onHover }) =
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animRef.current);
     };
-  }, [agents, hoveredAgent]);
+  }, []);
 
   // Mouse hover detection
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
