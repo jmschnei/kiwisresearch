@@ -67,6 +67,10 @@ export function useLiveSync(): void {
           break;
         case 'step_update':
           qc.invalidateQueries({ queryKey: queryKeys.steps(p.pipelineId) });
+          if (p.agent === 'Revisor Adversarial') {
+            qc.invalidateQueries({ queryKey: queryKeys.review(p.pipelineId) });
+            qc.invalidateQueries({ queryKey: queryKeys.paper(p.pipelineId) });
+          }
           break;
         case 'cost_update':
           qc.invalidateQueries({ queryKey: queryKeys.costs() });

@@ -42,6 +42,8 @@ class PipelineState:
     analysis: dict = field(default_factory=dict)
     paper_draft: dict = field(default_factory=dict)
     review_feedback: list[dict] = field(default_factory=list)
+    revision_round: int = 0  # 0 = first draft; n = n-th revision after peer review
+    paper_history: list[dict] = field(default_factory=list)  # one entry per paper version
     step_outputs: dict[str, dict] = field(default_factory=dict)  # role -> AgentOutput.to_dict()
     
     # Metadata
@@ -317,10 +319,10 @@ class ResearchPipeline:
     def _agent(self, role: str):
         return self._agent_factory(role)
 
-    async def _run_agent(self, role: str, state: PipelineState):
-        """Create the agent for ``role``, run it and record its output in the state."""
+    async def _run_agent(self, role: str, state: PipelineState, key: Optional[str] = None):
+        """Create the agent for ``role``, run it and record its output in the state under ``key`` (default: role)."""
         output = await self._agent(role).execute(state)
-        state.step_outputs[role] = output.to_dict()
+        state.step_outputs[key or role] = output.to_dict()
         return output
 
     async def _run_hypothesis_generation(self, state: PipelineState):
@@ -357,11 +359,48 @@ class ResearchPipeline:
             raise RuntimeError("Data analysis failed")
 
     async def _run_paper_writing(self, state: PipelineState):
+        # A fresh draft invalidates earlier reviews and revisions
+        state.revision_round = 0
+        state.review_feedback = []
+        state.paper_history = []
         output = await self._run_agent("writer", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Paper writing failed")
 
+    def _review_limits(self) -> tuple[int, Optional[float]]:
+        cfg = getattr(self._settings, "pipeline", None)
+        rounds = getattr(cfg, "peer_review_critique_rounds", 2) if cfg else 2
+        threshold = getattr(cfg, "auto_submit_threshold", None) if cfg else None
+        return max(1, int(rounds)), threshold
+
     async def _run_peer_review(self, state: PipelineState):
-        output = await self._run_agent("reviewer", state)
-        if output.state.name != "COMPLETED":
-            raise RuntimeError("Peer review failed")
+        """Review the paper; while it is not accepted, have the writer revise it and review again.
+
+        Runs at most ``pipeline.peer_review_critique_rounds`` reviews (1 = a single review, no revision).
+        Stops early when the paper is accepted (verdict, or score >= ``auto_submit_threshold``) or when a
+        review gives the writer nothing to act on (e.g. no LLM configured).
+        """
+        from .review_loop import decide
+
+        max_rounds, threshold = self._review_limits()
+        state.review_feedback = []
+        state.revision_round = 0
+
+        for round_no in range(1, max_rounds + 1):
+            self._emit("review_round", phase=PipelinePhase.PEER_REVIEW, round=round_no, max_rounds=max_rounds)
+            output = await self._run_agent("reviewer", state, key="reviewer" if round_no == 1 else f"reviewer_round_{round_no}")
+            if output.state.name != "COMPLETED":
+                raise RuntimeError("Peer review failed")
+
+            decision = decide(state.review_feedback[-1], round_no, max_rounds, threshold)
+            self._emit("review_decision", phase=PipelinePhase.PEER_REVIEW, round=round_no, max_rounds=max_rounds,
+                       verdict=decision.verdict, score=decision.score, revise=decision.revise, reason=decision.reason)
+            if not decision.revise:
+                break
+
+            state.revision_round = round_no
+            self._emit("revision_started", phase=PipelinePhase.PEER_REVIEW, round=round_no)
+            output = await self._run_agent("writer", state, key=f"writer_revision_{round_no}")
+            if output.state.name != "COMPLETED":
+                raise RuntimeError(f"Paper revision {round_no} failed")
+            self._emit("revision_finished", phase=PipelinePhase.PEER_REVIEW, round=round_no)

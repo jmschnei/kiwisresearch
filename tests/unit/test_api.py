@@ -284,3 +284,95 @@ def test_continue_from_step_runs_all_following_steps(tmp_path):
         assert final["status"] == "completed" and final["progress"] == 100
         steps = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
         assert [s["status"] for s in steps] == ["done"] * 7
+
+
+# ---------------------------------------------------------------- review loop through the API
+
+class ReviewLoopAgent(FakeAgent):
+    """Reviewer rejects until `accept_on_round`; writer produces versioned papers."""
+    reviews_done = 0
+
+    async def execute(self, state):
+        if self.role == "reviewer":
+            ReviewLoopAgent.reviews_done += 1
+            accept = ReviewLoopAgent.reviews_done >= self.accept_on
+            state.review_feedback.append(
+                {"overall_verdict": "Accept", "weaknesses": []} if accept else
+                {"overall_verdict": "Reject",
+                 "weaknesses": [{"category": "methodology", "severity": "major", "description": "no baselines"}],
+                 "required_changes": [{"type": "must_change", "description": "add baselines"}]})
+            return AgentOutput(agent_name="reviewer", state=AgentState.COMPLETED, data={"verdict": "x"})
+        if self.role == "writer":
+            v = state.revision_round + 1
+            (self.out_dir / "paper.pdf").write_bytes(b"%PDF-1.4 fake")
+            state.paper_draft = {"content": {"title": f"Paper v{v}", "sections": {"abstract": f"abs v{v}"},
+                                             "revision_notes": [{"issue": "baselines", "response": "added"}] if v > 1 else []}}
+            state.paper_history.append({"version": v, "title": f"Paper v{v}", "latex": f"paper_v{v}.tex",
+                                        "json": f"paper_draft_v{v}.json", "revisionNotes": []})
+            return AgentOutput(agent_name="writer", state=AgentState.COMPLETED, data={"version": v})
+        return await super().execute(state)
+
+
+def make_loop_app(tmp_path, accept_on):
+    ReviewLoopAgent.reviews_done = 0
+
+    def builder(settings, tracker, out_dir):
+        def factory(role):
+            agent = ReviewLoopAgent(role, tracker, out_dir)
+            agent.accept_on = accept_on
+            return agent
+        return ResearchPipeline(settings=settings, agent_factory=factory).build_default_pipeline()
+
+    return create_app(pipeline_builder=builder, jobs_dir=tmp_path / "jobs")
+
+
+def test_review_loop_runs_through_the_api(tmp_path):
+    with TestClient(make_loop_app(tmp_path, accept_on=2)) as c:
+        pid = launch(c)  # standard depth -> 2 review rounds
+        assert wait_for(c, pid)["status"] == "completed"
+
+        review = c.get(f"/api/v1/results/{pid}/review").json()["data"]
+        assert [r["verdict"] for r in review["rounds"]] == ["Reject", "Accept"]
+        assert review["rounds"][0]["score"] < review["rounds"][1]["score"] == 10
+        assert review["revisionRound"] == 1 and review["consensus"] == "accepted"
+
+        paper = c.get(f"/api/v1/results/{pid}/paper").json()["data"]
+        assert paper["title"] == "Paper v2" and paper["revisionNotes"][0]["response"] == "added"
+        assert [v["version"] for v in paper["versions"]] == [1, 2]
+
+        steps = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
+        assert steps[6]["status"] == "done" and "aceptado" in steps[6]["justification"]
+        texts = [l["text"] for l in c.get(f"/api/v1/pipelines/{pid}/logs").json()["data"]]
+        assert any("Ronda de revisión 1/2" in t for t in texts) and any("Revisando el artículo" in t for t in texts)
+
+
+def test_revision_progress_is_visible_while_the_writer_rewrites(tmp_path):
+    from kiwis.api.jobs import Job  # noqa: F401  (type only)
+
+    app = make_loop_app(tmp_path, accept_on=2)
+    with TestClient(app) as c:
+        pid = launch(c)
+        wait_for(c, pid)
+        job = app.state.manager.get(pid)
+        # transient flags are reset once the review step is over
+        assert job.revising is False and job.review_round == 0
+        job.revising, job.review_round, job.review_max = True, 1, 2
+        view = c.get(f"/api/v1/pipelines/{pid}").json()["data"]
+        assert view["revising"] is True and view["reviewRound"] == 1 and view["reviewMax"] == 2
+        assert job.running_agent_ids() == ["latex"]
+
+
+def test_depth_controls_the_number_of_review_rounds(tmp_path):
+    with TestClient(make_loop_app(tmp_path, accept_on=99)) as c:  # never accepted
+        fast = launch(c, depthLevel="fast")
+        wait_for(c, fast)
+        assert len(c.get(f"/api/v1/results/{fast}/review").json()["data"]["rounds"]) == 1
+
+        ReviewLoopAgent.reviews_done = 0
+        deep = launch(c, depthLevel="deep")  # config default 2 + 1
+        wait_for(c, deep)
+        assert len(c.get(f"/api/v1/results/{deep}/review").json()["data"]["rounds"]) == 3
+
+    # the whole history is restored after a restart
+    with TestClient(make_loop_app(tmp_path, accept_on=99)) as c:
+        assert len(c.get(f"/api/v1/results/{deep}/review").json()["data"]["rounds"]) == 3

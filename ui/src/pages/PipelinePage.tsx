@@ -52,7 +52,7 @@ export function PipelinePage() {
 
   const job = pipeline.data;
   const stepKey = steps?.map((s) => s.status).join(',');
-  const agents = useMemo(() => agentsFromSteps(steps, job?.status), [stepKey, job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const agents = useMemo(() => agentsFromSteps(steps, job?.status, job?.revising), [stepKey, job?.status, job?.revising]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (pipeline.isLoading) return <Spinner label="Cargando investigación…" />;
   if (pipeline.error || !job) {
@@ -94,6 +94,10 @@ export function PipelinePage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-base font-bold text-gray-100 truncate max-w-[50%]" title={job.name}>{job.name}</h1>
             <Badge label={badge.label} variant={badge.variant} dot />
+            {job.status === 'active' && !!job.reviewRound && (
+              <Badge label={job.revising ? `Reescribiendo · ronda ${job.reviewRound}/${job.reviewMax}` : `Revisión ${job.reviewRound}/${job.reviewMax}`}
+                variant={job.revising ? 'pink' : 'red'} dot />
+            )}
             <span className="text-[11px] text-gray-500 terminal-font">{job.elapsedTime} · {job.tokensUsed} tok · {formatUsd(job.spentUsd)}</span>
             <div className="ml-auto flex items-center gap-2">
               {job.status === 'active' && (

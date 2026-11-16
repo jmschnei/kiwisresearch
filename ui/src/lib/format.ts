@@ -45,3 +45,17 @@ export const DEPTH_LEVELS: { value: 'fast' | 'standard' | 'deep' | 'max'; label:
   { value: 'deep', label: '🔬 Profundo' },
   { value: 'max', label: '💎 Máximo' },
 ];
+
+/** Extra review rounds per depth level on top of the backend's configured rounds (fast = a single review). */
+const EXTRA_ROUNDS = { fast: null, standard: 0, deep: 1, max: 2 } as const;
+
+export const reviewRoundsFor = (level: keyof typeof EXTRA_ROUNDS, baseRounds: number): number => {
+  const extra = EXTRA_ROUNDS[level];
+  return extra === null ? 1 : baseRounds + extra;
+};
+
+export const depthOptions = (baseRounds = 2) =>
+  DEPTH_LEVELS.map((d) => {
+    const n = reviewRoundsFor(d.value, baseRounds);
+    return { value: d.value, label: `${d.label} · ${n === 1 ? 'una revisión' : `hasta ${n} rondas de revisión`}` };
+  });

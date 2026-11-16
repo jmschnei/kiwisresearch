@@ -70,6 +70,16 @@ Respond in this structure:
 }
 ```"""
 
+    REVISION_PROMPT = """
+
+REVISION MODE
+You are revising an existing paper after a peer review. Rewrite the COMPLETE paper in the same JSON structure,
+and add a "revision_notes" list answering the reviewers:
+  "revision_notes": [{"issue": "the reviewer's point", "response": "what you changed, or why you did not"}]
+Rules: address every "must_change" item and as many "should_improve" items as possible; keep what the reviewers praised;
+never invent experimental results or citations - if a requested analysis is impossible with the available evidence,
+say so honestly in the limitations instead."""
+
     def __init__(self, llm_provider=None, model_config=None, output_dir=None):
         super().__init__("writer-agent")
         self._output_dir = output_dir
@@ -107,11 +117,17 @@ Analysis and Conclusions:
 Generate a complete paper with all sections, properly formatted in LaTeX-compatible JSON structure.
 Ensure the narrative is coherent and compelling."""
 
+        revising = self._is_revision(context)
+        system_prompt = self.SYSTEM_PROMPT
+        if revising:
+            prompt = self._revision_prompt(context, prompt)
+            system_prompt = self.SYSTEM_PROMPT + self.REVISION_PROMPT
+
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
             config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.4)
             msgs = [
-                ChatMessage(role="system", content=self.SYSTEM_PROMPT),
+                ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=prompt),
             ]
             response_text = (await self._llm.chat(msgs, config)).content
@@ -123,6 +139,12 @@ Ensure the narrative is coherent and compelling."""
             match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
             paper_data = json.loads(match.group(1)) if match else {}
         except Exception:
+            paper_data = {}
+        if revising and not paper_data.get("sections"):
+            # Unusable LLM output must not wipe out the existing paper: keep it and record the failure.
+            paper_data = dict(context.paper_draft.get("content") or {})
+            paper_data["revision_notes"] = [{"issue": "revision", "response": "The revision could not be parsed; the previous version was kept."}]
+        elif not paper_data:
             paper_data = {"title": "Untitled", "abstract": "", "sections": {}, "tables": [], "figures": []}
 
         # Generate LaTeX document
@@ -140,13 +162,24 @@ Ensure the narrative is coherent and compelling."""
         with open(json_path, "w") as f:
             json.dump(paper_data, f, indent=2, default=str)
 
+        version = (context.revision_round if revising else 0) + 1
+        for src, name in ((json_path, f"paper_draft_v{version}.json"), (paper_path, f"paper_v{version}.tex")):
+            (output_dir / name).write_text(src.read_text())
+        history = [h for h in context.paper_history if h.get("version") != version]
+        history.append({"version": version, "title": paper_data.get("title", "Untitled"),
+                        "latex": f"paper_v{version}.tex", "json": f"paper_draft_v{version}.json",
+                        "revisionNotes": paper_data.get("revision_notes", [])})
+        context.paper_history = history
+
         context.paper_draft.update({
             "latex_path": str(paper_path),
             "json_path": str(json_path),
             "content": paper_data,
         })
         
-        # Compile PDF if LaTeX compiler is available
+        # Compile PDF if LaTeX compiler is available (drop any PDF left over from a previous version)
+        context.paper_draft.pop("pdf_path", None)
+        paper_path.with_suffix(".pdf").unlink(missing_ok=True)
         latex_compiled = False
         try:
             from ..execution.sandbox import ExecutionResult
@@ -171,11 +204,40 @@ Ensure the narrative is coherent and compelling."""
                 "title": paper_data.get("title", "Untitled"),
                 "sections_written": list(paper_data.get("sections", {}).keys()),
                 "num_tables": len(paper_data.get("tables", [])),
+                "version": version,
+                "revision": revising,
                 "latex_compiled": latex_compiled,
                 "pdf_available": latex_compiled,
             },
         )
         return self.output
+
+    @staticmethod
+    def _is_revision(context: AgentContext) -> bool:
+        return bool(getattr(context, "revision_round", 0) > 0 and context.review_feedback
+                    and (context.paper_draft or {}).get("content"))
+
+    @staticmethod
+    def _revision_prompt(context: AgentContext, base_prompt: str) -> str:
+        review = context.review_feedback[-1]
+        previous = json.dumps(context.paper_draft.get("content", {}), indent=1, default=str, ensure_ascii=False)
+        required = json.dumps(review.get("required_changes", []), indent=1, default=str, ensure_ascii=False)
+        weaknesses = json.dumps(review.get("weaknesses", []), indent=1, default=str, ensure_ascii=False)
+        return f"""{base_prompt}
+
+=== CURRENT VERSION OF THE PAPER (revision round {context.revision_round}) ===
+{previous[:14000]}
+
+=== PEER REVIEW ===
+Verdict: {review.get("overall_verdict", "unknown")}
+Strengths: {json.dumps(review.get("strengths", []), default=str, ensure_ascii=False)[:1500]}
+Weaknesses:
+{weaknesses[:5000]}
+Required changes:
+{required[:3000]}
+Reviewer rationale: {str(review.get("decision_rationale", ""))[:1500]}
+
+Rewrite the complete paper addressing this review, and include "revision_notes"."""
 
     def _generate_latex(self, paper_data: dict, context: AgentContext) -> str:
         """Generate LaTeX document from parsed paper data."""

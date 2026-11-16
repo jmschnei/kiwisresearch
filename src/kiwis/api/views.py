@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from .catalog import PHASE_TABLE, ROLE_TO_UI_AGENT, UI_AGENTS
+from ..orchestrator.review_loop import category_scores, round_summary, verdict_of
 from .events import now_iso
 from .jobs import Job, JobManager, format_elapsed, format_tokens
 
@@ -20,7 +21,6 @@ REVIEW_CATEGORIES = [
     ("writing", "Escritura", "#f97316"),
     ("ethics", "Ética", "#ef4444"),
 ]
-SEVERITY_PENALTY = {"fatal": 4, "major": 2, "minor": 1}
 
 
 def pipeline_view(job: Job) -> dict:
@@ -34,6 +34,9 @@ def pipeline_view(job: Job) -> dict:
         "agents": [{"agentId": a[0], "active": True, "priority": i} for i, a in enumerate(UI_AGENTS)],
         "createdAt": job.created_at, "updatedAt": job.updated_at,
         "error": job.error,
+        "revising": job.revising,
+        "reviewRound": job.review_round,
+        "reviewMax": job.review_max,
     }
 
 
@@ -52,6 +55,10 @@ def agents_view(manager: JobManager) -> list[dict]:
                 status[ui_id] = "waiting"
             elif step["status"] == "failed":
                 errors[ui_id] += 1
+        if job.revising:  # writer is rewriting the paper after a review round
+            status["latex"] = "executing"
+            if status["revisor"] == "reviewing":
+                status["revisor"] = "waiting"
         for role, usage in job.tracker.by_agent().items():
             ui_id = ROLE_TO_UI_AGENT.get(role)
             if ui_id:
@@ -120,23 +127,31 @@ def paper_view(manager: JobManager, job: Job) -> dict | None:
         if review["metrics"] else 0,
         "reviewConsensus": review["consensus"],
         "artifacts": manager.list_artifacts(job),
+        "versions": job.state.paper_history,
+        "revisionNotes": content.get("revision_notes", []),
     }
 
 
 def review_view(job: Job) -> dict:
-    """Peer-review scores derived from the reviewer's weaknesses (10 minus severity penalties)."""
-    feedback = job.state.review_feedback[-1] if job.state.review_feedback else {}
-    weaknesses = [w for w in feedback.get("weaknesses", []) if isinstance(w, dict)]
+    """Peer-review scores of the latest round plus the history of all rounds."""
+    reviews = [r for r in job.state.review_feedback if isinstance(r, dict)]
+    feedback = reviews[-1] if reviews else {}
     metrics = []
     if feedback:
+        weaknesses = [w for w in feedback.get("weaknesses", []) if isinstance(w, dict)]
+        scores = category_scores(feedback)
         for key, label, color in REVIEW_CATEGORIES:
             related = [w for w in weaknesses if w.get("category") == key]
-            penalty = sum(SEVERITY_PENALTY.get(w.get("severity"), 1) for w in related)
-            metrics.append({"name": label, "score": max(0, 10 - penalty), "maxScore": 10, "color": color,
+            metrics.append({"name": label, "score": scores[key], "maxScore": 10, "color": color,
                             "description": "; ".join(w.get("description", "") for w in related)[:300]
                             or "Sin objeciones"})
-    verdict = str(feedback.get("overall_verdict", "")).strip().lower()
-    return {"metrics": metrics, "consensus": VERDICT_TO_CONSENSUS.get(verdict, "borderline")}
+    verdict = verdict_of(feedback)
+    return {
+        "metrics": metrics,
+        "consensus": VERDICT_TO_CONSENSUS.get(verdict, "borderline"),
+        "rounds": [round_summary(r, i + 1) for i, r in enumerate(reviews)],
+        "revisionRound": job.state.revision_round,
+    }
 
 
 def config_view(settings) -> dict:

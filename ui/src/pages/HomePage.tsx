@@ -5,7 +5,7 @@ import { Badge } from '@/components/common/Badge';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { useBackendConfig, useBackendHealth, useCreateResearch, usePipelines } from '@/hooks/useApi';
 import { useConfigStore } from '@/store/config';
-import { DEPTH_LEVELS, RESEARCH_DOMAINS, RESEARCH_TYPES, STATUS_BADGE, timeAgo } from '@/lib/format';
+import { depthOptions, RESEARCH_DOMAINS, RESEARCH_TYPES, STATUS_BADGE, timeAgo } from '@/lib/format';
 import type { CreateResearchRequest } from '@/types/api';
 
 const EXAMPLES = [
@@ -161,9 +161,9 @@ export function HomePage() {
                 </select>
               </label>
               <label className="text-[11px] text-gray-500 space-y-1">
-                Profundidad
+                Profundidad (rondas de revisión y reescritura)
                 <select className="form-field-select" value={depth} onChange={(e) => setDepth(e.target.value as typeof depth)}>
-                  {DEPTH_LEVELS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  {depthOptions(Number(config?.pipeline.peer_review_critique_rounds ?? 2)).map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                 </select>
               </label>
               <label className="text-[11px] text-gray-500 space-y-1">

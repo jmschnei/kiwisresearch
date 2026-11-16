@@ -17,6 +17,7 @@ from typing import Callable, Optional
 from ..config.settings import Settings
 from ..models.usage import UsageRecord, UsageTracker
 from ..orchestrator.pipeline import PipelinePhase, PipelineState, ResearchPipeline
+from ..orchestrator.review_loop import is_accepted, round_summary
 from .catalog import PHASE_INDEX, PHASE_TABLE, ROLE_TO_UI_AGENT, UI_AGENT_BY_ID
 from .events import EventBus, now_iso
 from .schemas import CreateResearchRequest
@@ -51,6 +52,17 @@ def _make_sandbox(settings: Settings, output_dir: Path):
     return IsolatedSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds)
 
 
+REVIEW_REASONS = {
+    "accepted": "aceptado",
+    "max_rounds": "se alcanzó el máximo de rondas",
+    "not_actionable": "la revisión no contiene cambios aplicables",
+    "needs_revision": "se solicita revisión",
+}
+
+# depth level -> extra review rounds on top of the configured pipeline.peer_review_critique_rounds
+DEPTH_EXTRA_ROUNDS = {"fast": None, "standard": 0, "deep": 1, "max": 2}  # fast = exactly one review
+
+
 def format_tokens(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M"
@@ -83,6 +95,10 @@ class Job:
     steps: list[dict] = field(default_factory=list)
     logs: list[dict] = field(default_factory=list)
     budget_usd: float = 0.0
+    # Transient peer-review progress (not persisted)
+    revising: bool = False
+    review_round: int = 0
+    review_max: int = 0
 
     @property
     def state(self) -> PipelineState:
@@ -100,7 +116,10 @@ class Job:
         return round(100 * done / len(self.steps)) if self.steps else 0
 
     def running_agent_ids(self) -> list[str]:
-        return [PHASE_TABLE[i][3] for i, s in enumerate(self.steps) if s["status"] == "progress"]
+        ids = [PHASE_TABLE[i][3] for i, s in enumerate(self.steps) if s["status"] == "progress"]
+        if self.revising:  # the writer is rewriting the paper while the reviewer waits
+            ids = [i for i in ids if i != "revisor"] + ["latex"]
+        return ids
 
 
 class JobManager:
@@ -207,6 +226,10 @@ class JobManager:
     def _settings_for(self, req: CreateResearchRequest) -> Settings:
         """Per-job copy of the settings with the request's model/token overrides applied."""
         s = self.settings.model_copy(deep=True)
+        extra = DEPTH_EXTRA_ROUNDS.get(req.depthLevel, 0)
+        s.pipeline.peer_review_critique_rounds = (
+            1 if extra is None else s.pipeline.peer_review_critique_rounds + extra
+        )
         for name in type(s.agents).model_fields:
             cfg = getattr(s.agents, name)
             if req.model and req.model.lower() not in ("auto", "default"):
@@ -342,24 +365,47 @@ class JobManager:
             self._status_change(ui_id, "waiting", running_status)
             self._log(job, agent_name, role, f"{name}: iniciado", "thinking")
         elif kind == "step_finished":
+            if phase == PipelinePhase.PEER_REVIEW:
+                job.revising, job.review_round = False, 0
             step.update(status="done", endTime=now_iso(), **self._step_details(job, role, phase))
             self._status_change(ui_id, running_status, "idle")
             self._log(job, agent_name, role, f"{name}: completado en {ev['duration']:.1f}s", "success")
             self._enforce_budget(job)
         elif kind == "step_failed":
+            job.revising, job.review_round = False, 0
             step.update(status="failed", endTime=now_iso(), justification=ev["error"])
             self._status_change(ui_id, running_status, "idle", reason=ev["error"])
             self._log(job, agent_name, role, f"{name}: fallo — {ev['error']}", "error")
         elif kind == "step_skipped":
             step.update(status="done", justification=ev.get("reason", ""))
             self._log(job, agent_name, role, f"{name}: omitido ({ev.get('reason', '')})", "info")
+        elif kind == "review_round":
+            job.review_round, job.review_max = ev["round"], ev["max_rounds"]
+            self._log(job, agent_name, role, f"Ronda de revisión {ev['round']}/{ev['max_rounds']}", "thinking")
+        elif kind == "review_decision":
+            outcome = REVIEW_REASONS.get(ev["reason"], ev["reason"])
+            text = f"Ronda {ev['round']}: veredicto «{ev['verdict']}», puntuación {ev['score']}/10 → {outcome}"
+            step.update(justification=text)
+            self._log(job, agent_name, role, text, "warning" if ev["revise"] else "success")
+        elif kind == "revision_started":
+            job.revising = True
+            writer = UI_AGENT_BY_ID["latex"][1]
+            self._status_change(ui_id, running_status, "idle")
+            self._status_change("latex", "idle", "executing")
+            self._log(job, writer, "writer", f"Revisando el artículo tras la ronda {ev['round']}…", "thinking")
+        elif kind == "revision_finished":
+            job.revising = False
+            writer = UI_AGENT_BY_ID["latex"][1]
+            self._status_change("latex", "executing", "idle")
+            self._status_change(ui_id, "idle", running_status)
+            self._log(job, writer, "writer", f"Revisión {ev['round']} del artículo completada", "success")
 
         self.bus.publish("step_update", {
             "pipelineId": job.id, "stepNum": step["num"], "agent": agent_name, "status": step["status"],
             "output": job.state.step_outputs.get(role),
         })
         self._publish_pipeline_update(job)
-        if kind in ("step_finished", "step_failed", "step_skipped"):
+        if kind in ("step_finished", "step_failed", "step_skipped", "review_decision", "revision_finished"):
             self._persist(job)
 
     def _status_change(self, agent_id: str, prev: str, new: str, reason: Optional[str] = None) -> None:
@@ -377,6 +423,11 @@ class JobManager:
         text = next((str(data[k]) for k in ("rationale", "summary", "verdict", "title") if data.get(k)), "")
         if phase == PipelinePhase.HYPOTHESIS and job.state.hypothesis:
             text = job.state.hypothesis
+        if phase == PipelinePhase.PEER_REVIEW and job.state.review_feedback:
+            reviews = job.state.review_feedback
+            last = round_summary(reviews[-1], len(reviews))
+            outcome = "aceptado" if is_accepted(reviews[-1]) else "no aceptado"
+            text = f"{len(reviews)} ronda(s) de revisión · veredicto final «{last['verdict']}» ({outcome}) · {last['score']}/10"
         if not text and data:
             text = json.dumps(data, default=str, ensure_ascii=False)
         code = job.state.artifacts.get("experiment_code", "") if phase == PipelinePhase.EXECUTION else ""

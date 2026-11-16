@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Download } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { ErrorBox, Spinner } from '@/components/common/Spinner';
@@ -68,6 +68,7 @@ export function ResultsPage() {
   const notReady = paper.error instanceof ApiError && paper.error.code === 'NOT_READY';
   const consensus = p ? CONSENSUS_LABEL[p.reviewConsensus] : null;
   const lastReview = (st.review_feedback as any[] | undefined)?.slice(-1)[0];
+  const rounds = review.data?.rounds ?? [];
   const chartData = (review.data?.metrics ?? []).map((m) => ({ name: m.name, score: m.score, color: m.color, description: m.description }));
 
   const openPreview = async (name: string) => {
@@ -90,7 +91,10 @@ export function ResultsPage() {
                 {j.name} · {j.elapsedTime} · {j.tokensUsed} tok · {formatUsd(j.spentUsd)} (estimado)
               </div>
             </div>
-            {consensus && <Badge label={consensus.label} variant={consensus.variant} size="md" dot />}
+            <div className="flex items-center gap-2">
+              {p && p.versions.length > 1 && <Badge label={`Versión ${p.versions.at(-1)!.version} · ${p.versions.length - 1} revisión(es)`} variant="pink" size="md" />}
+              {consensus && <Badge label={consensus.label} variant={consensus.variant} size="md" dot />}
+            </div>
           </div>
           {j.status === 'active' && <div className="mt-3 text-sm text-cyber-yellow">⏳ La investigación sigue en curso; los resultados aparecerán al terminar.</div>}
           {j.status === 'failed' && j.error && <div className="mt-3 text-sm text-cyber-red">⚠️ {j.error}</div>}
@@ -116,6 +120,18 @@ export function ResultsPage() {
                   <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{p.abstract || 'El agente redactor no generó un resumen.'}</p>
                   <div className="text-[11px] text-gray-500 mt-3">Autores: {p.authors.join(', ')}</div>
                 </Section>
+                {p.revisionNotes.length > 0 && (
+                  <Section title={`Respuesta a los revisores (versión ${p.versions.at(-1)?.version ?? 1})`}>
+                    <ul className="space-y-3">
+                      {p.revisionNotes.map((n, i) => (
+                        <li key={i} className="text-sm">
+                          <div className="text-gray-300">🔎 {n.issue}</div>
+                          <div className="text-gray-500 pl-5">↳ {n.response}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  </Section>
+                )}
                 <Section title="Documento">
                   {p.pdfUrl ? (
                     <>
@@ -167,8 +183,45 @@ export function ResultsPage() {
           <div className="space-y-4">
             {review.isLoading && <Spinner label="Cargando revisión…" />}
             {review.data && review.data.metrics.length === 0 && <ErrorBox message="Todavía no hay revisión por pares para esta investigación." />}
+            {rounds.length > 0 && (
+              <Section title={`Rondas de revisión (${rounds.length})`}>
+                {rounds.length > 1 && (
+                  <div className="h-44 mb-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={rounds.map((r) => ({ name: `Ronda ${r.round}`, score: r.score }))} margin={{ left: 0, right: 20, top: 10 }}>
+                        <CartesianGrid stroke="#1e2940" vertical={false} />
+                        <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} />
+                        <YAxis domain={[0, 10]} stroke="#6b7280" fontSize={11} width={28} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid #1e2940', borderRadius: 8, fontSize: 12 }} />
+                        <Line type="monotone" dataKey="score" stroke="#a855f7" strokeWidth={2.5} dot={{ r: 5, fill: '#a855f7' }} name="Puntuación" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {rounds.map((r) => (
+                    <div key={r.round} className="rounded-lg border border-dark-primary/40 bg-dark-primary/30 p-4">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-200">Ronda {r.round}</span>
+                          <Badge label={r.verdict} variant={/^accept|weak accept/i.test(r.verdict) ? 'green' : /reject/i.test(r.verdict) ? 'red' : 'yellow'} dot />
+                          {r.round < rounds.length && <span className="text-[11px] text-gray-500">→ el artículo se reescribió</span>}
+                        </div>
+                        <span className="terminal-font text-sm text-cyber-purple">{r.score}/10 · {r.weaknesses} objeciones{r.fatal > 0 && ` (${r.fatal} fatales)`}</span>
+                      </div>
+                      {r.rationale && <p className="text-[12px] text-gray-400 mt-2">{r.rationale}</p>}
+                      {r.requiredChanges.length > 0 && (
+                        <ul className="list-disc pl-5 mt-2 text-[12px] text-gray-400 space-y-0.5">
+                          {r.requiredChanges.map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
             {chartData.length > 0 && (
-              <Section title="Puntuación por criterio (10 − penalizaciones por severidad)">
+              <Section title={`Puntuación por criterio — última ronda (10 − penalizaciones por severidad)`}>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} layout="vertical" margin={{ left: 30, right: 20 }}>

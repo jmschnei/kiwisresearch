@@ -13,8 +13,8 @@ React 19 · TypeScript (strict) · Vite 6 · React Router 6 · TanStack Query 5 
 |------|--------|----------------|
 | `/` | Inicio | Formulario de consulta: tema, hipótesis opcional, tipo, dominio y parámetros avanzados (modelo, profundidad, presupuesto). Avisa si falta el backend o las API keys. |
 | `/pipelines` | Investigaciones | Todas las ejecuciones con filtros, búsqueda, totales de tokens/coste, estado del enjambre y acciones (pausar, reanudar, eliminar). |
-| `/pipelines/:id` | Monitor | Seguimiento en vivo: grafo de agentes, terminal de logs, inspector de pasos (re-ejecución), pausar/reanudar/detener. |
-| `/pipelines/:id/results` | Resultados | Artículo y PDF, hipótesis/literatura/diseño/análisis, puntuaciones de la revisión por pares, artefactos (vista previa y descarga). |
+| `/pipelines/:id` | Monitor | Seguimiento en vivo: grafo de agentes, terminal de logs, inspector de pasos (re-ejecución), pausar/reanudar/detener y la ronda de revisión en curso. |
+| `/pipelines/:id/results` | Resultados | Artículo y PDF, hipótesis/literatura/diseño/análisis, historial de rondas de revisión (veredicto, puntuación, cambios exigidos), respuesta a los revisores, artefactos (vista previa y descarga). |
 | `/library` | Biblioteca | Búsqueda de artículos en arXiv; permite lanzar una investigación a partir de un resultado. |
 | `/settings` | Ajustes | Estado de la conexión, proveedores LLM disponibles, modelo por agente y preferencias por defecto. |
 
@@ -43,6 +43,7 @@ npm run build                             # typecheck + build de producción
 ```
 
 Sin API keys los agentes funcionan en modo placeholder (contenido de ejemplo vacío); la página de inicio y los ajustes lo indican.
+La *profundidad* del formulario fija las rondas de revisión (rápido = 1; estándar = `peer_review_critique_rounds`; profundo = +1; máximo = +2).
 Define `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` en el entorno del servidor, o activa Ollama en `kiwis_config.yaml`.
 
 ## Notas

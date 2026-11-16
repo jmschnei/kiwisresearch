@@ -139,6 +139,7 @@ Analysis & Conclusions:
 {json.dumps(analysis.get("conclusions", []), indent=2, default=str)[:1000]}
 
 Provide a thorough, rigorous review covering ALL criteria. Be specific about what needs to be fixed."""
+        prompt += self._previous_round_note(context)
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
@@ -178,6 +179,23 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
             },
         )
         return self.output
+
+    @staticmethod
+    def _previous_round_note(context: AgentContext) -> str:
+        """In later rounds, tell the reviewer what it asked for and how the authors say they responded."""
+        round_no = getattr(context, "revision_round", 0)
+        if round_no <= 0 or not context.review_feedback:
+            return ""
+        prev = context.review_feedback[-1]
+        notes = (context.paper_draft.get("content") or {}).get("revision_notes", [])
+        return f"""
+
+=== THIS IS REVISION ROUND {round_no} ===
+Your previous verdict: {prev.get("overall_verdict", "unknown")}
+Changes you required: {json.dumps(prev.get("required_changes", []), default=str, ensure_ascii=False)[:2000]}
+Authors' response notes: {json.dumps(notes, default=str, ensure_ascii=False)[:2500]}
+Verify whether each required change was actually made in the text above (do not trust the notes alone). Do not raise
+new minor issues just to prolong the process; keep open only the problems that really remain."""
 
     def _get_system_prompt(self) -> str:
         return f"""You are a rigorous peer reviewer for NeurIPS/ICML.

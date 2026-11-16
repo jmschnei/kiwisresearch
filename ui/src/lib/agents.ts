@@ -15,12 +15,19 @@ const emptyMeta = {
 };
 
 /** Backend step i runs on catalog agent i (same order as the pipeline). */
-export function agentsFromSteps(steps: ResearchStep[] | undefined, pipelineStatus: PipelineStatus | undefined): AgentNode[] {
+export function agentsFromSteps(
+  steps: ResearchStep[] | undefined,
+  pipelineStatus: PipelineStatus | undefined,
+  revising = false,
+): AgentNode[] {
   return AGENT_CATALOG.map((a, i) => {
     const step = steps?.[i];
     let status: AgentStatus = 'idle';
     if (step?.status === 'progress') status = a.running;
     else if (step?.status === 'waiting' && pipelineStatus === 'active') status = 'waiting';
+    // During a revision round the writer works while the reviewer waits
+    if (revising && a.id === 'latex') status = 'executing';
+    if (revising && a.id === 'revisor') status = 'waiting';
     return {
       id: a.id, name: a.name, icon: a.icon, color: a.color, size: a.size, status,
       metadata: { ...emptyMeta, isHealthy: step?.status !== 'failed', errorCount: step?.status === 'failed' ? 1 : 0 },

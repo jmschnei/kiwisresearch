@@ -205,7 +205,7 @@ export DEEPSEEK_API_KEY="sk-..."      # Optional, for DeepSeek fallback
 
 5. **Structured Agent Outputs**: Every agent returns an `AgentOutput` with standardized format, enabling predictable downstream processing.
 
-6. **Peer Review Loop**: The reviewer runs adversarial critique; results feed back to the writer for revision (configurable number of rounds).
+6. **Peer Review Loop**: The reviewer runs an adversarial critique; unless the paper is accepted, the writer revises it against the review (answering each point in `revision_notes`) and the reviewer checks again. It stops when the paper is accepted, the score reaches `auto_submit_threshold`, the review gives nothing actionable, or `pipeline.peer_review_critique_rounds` reviews were done (1 = review only). Every paper version is kept (`paper_v1.tex`, `paper_v2.tex`...).
 
 ## Extending the System
 

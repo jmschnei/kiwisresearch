@@ -40,6 +40,9 @@ export interface PipelineJob {
   createdAt: string;
   updatedAt: string;
   error?: string | null;
+  revising?: boolean;
+  reviewRound?: number;
+  reviewMax?: number;
 }
 
 export type ResearchType = 'paper' | 'survey' | 'exploration' | 'experiment' | 'benchmark';
@@ -103,6 +106,8 @@ export interface PaperResult {
   overallScore: number;
   reviewConsensus: ReviewConsensus;
   artifacts: Artifact[];
+  versions: PaperVersion[];
+  revisionNotes: { issue: string; response: string }[];
 }
 
 export interface CostSnapshot {
@@ -138,7 +143,28 @@ export interface BackendConfig {
   pipeline: Record<string, number | null>;
 }
 
+export interface ReviewRound {
+  round: number;
+  verdict: string;
+  score: number;
+  categoryScores: Record<string, number>;
+  weaknesses: number;
+  fatal: number;
+  requiredChanges: string[];
+  rationale: string;
+}
+
 export interface ReviewScores {
   metrics: PeerReviewMetric[];
   consensus: ReviewConsensus;
+  rounds: ReviewRound[];
+  revisionRound: number;
+}
+
+export interface PaperVersion {
+  version: number;
+  title: string;
+  latex: string;
+  json: string;
+  revisionNotes: { issue: string; response: string }[];
 }

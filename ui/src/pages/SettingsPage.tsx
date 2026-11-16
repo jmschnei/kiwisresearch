@@ -4,7 +4,7 @@ import { useBackendConfig, useBackendHealth } from '@/hooks/useApi';
 import { API_BASE } from '@/services/api';
 import { useConfigStore } from '@/store/config';
 import { useDashboardStore } from '@/store/dashboard';
-import { DEPTH_LEVELS } from '@/lib/format';
+import { depthOptions } from '@/lib/format';
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section className="glass-panel p-5">
@@ -112,7 +112,7 @@ export function SettingsPage() {
               Profundidad
               <select className="form-field-select" value={prefs.defaultDepth}
                 onChange={(e) => prefs.setPrefs({ defaultDepth: e.target.value as typeof prefs.defaultDepth })}>
-                {DEPTH_LEVELS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                {depthOptions(Number(cfg?.pipeline.peer_review_critique_rounds ?? 2)).map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select>
             </label>
             <label className="text-[11px] text-gray-500 space-y-1">

@@ -9,8 +9,8 @@ pipeline:
   max_iterations: 3                        # Max research iterations
   hypothesis_generation_rounds: 3          # How many hypothesis rounds per iteration
   literature_review_papers_max: 20         # Max papers to retrieve
-  peer_review_critique_rounds: 2           # Review iterations before submitting
-  auto_submit_threshold: null              # Auto-submit if reviewer score >= this (0-1)
+  peer_review_critique_rounds: 2           # Max review rounds: review -> revise -> review... (1 = review only)
+  auto_submit_threshold: null              # Stop revising once the review score / 10 >= this (0-1)
 
 # ---- Agent settings ----
 agents:
