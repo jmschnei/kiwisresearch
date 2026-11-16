@@ -63,7 +63,10 @@ class PipelineState:
     
     @classmethod
     def from_dict(cls, d: dict) -> "PipelineState":
-        return cls(**d)
+        known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        if "phase" in known:
+            known["phase"] = PipelinePhase(known["phase"])
+        return cls(**known)
 
 
 @dataclass

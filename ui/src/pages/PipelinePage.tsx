@@ -70,7 +70,7 @@ export function PipelinePage() {
   const hoveredCost = hovered ? breakdown?.[hovered.id] : undefined;
 
   const onDelete = () => {
-    if (window.confirm(`¿Eliminar "${job.name}"? Esto detiene la ejecución y la quita de la lista.`)) {
+    if (window.confirm(`¿Eliminar "${job.name}"? Se detiene la ejecución y se borran sus resultados y ficheros. No se puede deshacer.`)) {
       remove.mutate(job.id, { onSuccess: () => navigate('/pipelines') });
     }
   };
@@ -149,7 +149,7 @@ export function PipelinePage() {
           onTabChange={setInspectorTab}
           onToggleStep={toggleStep}
           expandedSteps={expandedSteps}
-          onReexecute={running ? undefined : (n) => reexecute.mutate({ id: job.id, step: n })}
+          onReexecute={running ? undefined : (n, cascade) => reexecute.mutate({ id: job.id, step: n, cascade })}
         />
       </aside>
     </div>

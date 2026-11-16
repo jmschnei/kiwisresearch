@@ -183,3 +183,104 @@ def test_config_endpoint_reports_availability_without_secrets(tmp_path, monkeypa
         assert data["providers"]["ollama"]["available"] is True
         assert data["agents"]["reviewer"]["provider"] in ("openai", "anthropic")
         assert "sk-secret-value" not in r.text
+
+
+# ---------------------------------------------------------------- persistence
+
+def test_jobs_survive_server_restart(tmp_path):
+    with TestClient(make_app(tmp_path)) as c:
+        pid = launch(c)
+        before = wait_for(c, pid)
+        steps_before = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
+        logs_before = c.get(f"/api/v1/pipelines/{pid}/logs").json()["data"]
+
+    with TestClient(make_app(tmp_path)) as c:  # a brand-new app over the same directory
+        after = c.get(f"/api/v1/pipelines/{pid}").json()["data"]
+        assert after["status"] == "completed" and after["progress"] == 100
+        assert after["name"] == before["name"] and after["createdAt"] == before["createdAt"]
+        assert after["spentUsd"] == before["spentUsd"] > 0
+        assert c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"] == steps_before
+        assert len(c.get(f"/api/v1/pipelines/{pid}/logs").json()["data"]) == len(logs_before)
+        assert c.get(f"/api/v1/results/{pid}/paper").json()["data"]["title"] == "Fake Paper"
+        assert c.get(f"/api/v1/results/{pid}/review").json()["data"]["consensus"] == "accepted"
+        assert c.get(f"/api/v1/costs?pipeline_id={pid}").json()["data"]["tokensUsed"] == 7 * 1500
+        assert [p["id"] for p in c.get("/api/v1/pipelines").json()["data"]] == [pid]
+
+
+def test_interrupted_job_is_marked_failed_and_can_resume(tmp_path):
+    import json as _json
+
+    with TestClient(make_app(tmp_path, delay=0.05)) as c:
+        pid = launch(c)
+        wait_for(c, pid)
+
+    # Simulate a crash: the job was running step 7 when the server died.
+    meta_path = tmp_path / "jobs" / pid / "job.json"
+    meta = _json.loads(meta_path.read_text())
+    meta["status"] = "active"
+    meta["steps"][6].update(status="progress", justification="")
+    meta_path.write_text(_json.dumps(meta))
+
+    with TestClient(make_app(tmp_path, delay=0.05)) as c:
+        job = c.get(f"/api/v1/pipelines/{pid}").json()["data"]
+        assert job["status"] == "failed" and "reinici" in job["error"]
+        steps = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
+        assert steps[6]["status"] == "failed"
+
+        # Re-executing the interrupted step resumes from the saved state
+        assert c.post("/api/v1/pipelines/reexecute", json={"pipelineId": pid, "stepNum": 7}).status_code == 200
+        final = wait_for(c, pid, statuses=("completed",))
+        assert final["error"] is None
+        assert c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"][6]["status"] == "done"
+
+    # ...and the recovery itself was persisted
+    with TestClient(make_app(tmp_path)) as c:
+        assert c.get(f"/api/v1/pipelines/{pid}").json()["data"]["status"] == "completed"
+
+
+def test_delete_is_permanent(tmp_path):
+    with TestClient(make_app(tmp_path)) as c:
+        pid = launch(c)
+        wait_for(c, pid)
+        assert (tmp_path / "jobs" / pid / "job.json").exists()
+        assert c.delete(f"/api/v1/pipelines/{pid}").status_code == 200
+        assert not (tmp_path / "jobs" / pid).exists()
+    with TestClient(make_app(tmp_path)) as c:
+        assert c.get("/api/v1/pipelines").json()["data"] == []
+
+
+def test_corrupt_job_file_does_not_block_startup(tmp_path):
+    with TestClient(make_app(tmp_path)) as c:
+        good = launch(c)
+        wait_for(c, good)
+    bad = tmp_path / "jobs" / "p-deadbeef"
+    bad.mkdir()
+    (bad / "job.json").write_text("{not json")
+    with TestClient(make_app(tmp_path)) as c:
+        ids = [p["id"] for p in c.get("/api/v1/pipelines").json()["data"]]
+        assert ids == [good]
+
+
+def test_continue_from_step_runs_all_following_steps(tmp_path):
+    import json as _json
+
+    with TestClient(make_app(tmp_path, delay=0.02)) as c:
+        pid = launch(c)
+        wait_for(c, pid)
+
+    # Crash after step 3: steps 4-7 never ran
+    meta_path = tmp_path / "jobs" / pid / "job.json"
+    meta = _json.loads(meta_path.read_text())
+    meta["status"] = "active"
+    for step in meta["steps"][3:]:
+        step.update(status="waiting", justification="", codeSnippet="")
+    meta_path.write_text(_json.dumps(meta))
+
+    with TestClient(make_app(tmp_path, delay=0.02)) as c:
+        assert c.get(f"/api/v1/pipelines/{pid}").json()["data"]["status"] == "failed"
+        r = c.post("/api/v1/pipelines/reexecute", json={"pipelineId": pid, "stepNum": 4, "cascade": True})
+        assert r.status_code == 200
+        final = wait_for(c, pid, statuses=("completed", "failed"))
+        assert final["status"] == "completed" and final["progress"] == 100
+        steps = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
+        assert [s["status"] for s in steps] == ["done"] * 7

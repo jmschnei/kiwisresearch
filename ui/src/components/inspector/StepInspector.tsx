@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Play, RotateCcw } from 'lucide-react';
 import type { ResearchStep, StepStatus } from '@/types/api';
 import type { InspectorTab } from '@/store/dashboard';
 
@@ -10,7 +10,7 @@ interface Props {
   onToggleStep: (num: number) => void;
   expandedSteps: number[];
   /** Undefined when re-execution is not allowed (e.g. pipeline still running). */
-  onReexecute?: (num: number) => void;
+  onReexecute?: (num: number, cascade: boolean) => void;
 }
 
 const statusDot: Record<StepStatus, string> = {
@@ -102,12 +102,20 @@ export const StepInspector: React.FC<Props> = ({ steps, activeTab, onTabChange, 
                       {s.status === 'waiting' ? 'Pendiente de ejecución' : s.status === 'progress' ? 'En ejecución…' : 'Sin detalles'}
                     </div>
                   )}
-                  {onReexecute && (s.status === 'done' || s.status === 'failed') && (
+                  {onReexecute && s.status === 'done' && (
                     <button
-                      onClick={() => onReexecute(s.num)}
+                      onClick={() => onReexecute(s.num, false)}
                       className="w-full flex items-center justify-center gap-1.5 py-2 border border-cyber-blue/40 text-cyber-blue rounded-lg text-[11px] font-semibold hover:bg-cyber-blue/[0.1] transition-all"
                     >
                       <RotateCcw className="w-3 h-3" /> Re-ejecutar paso {s.num}
+                    </button>
+                  )}
+                  {onReexecute && (s.status === 'failed' || s.status === 'waiting') && (
+                    <button
+                      onClick={() => onReexecute(s.num, true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 border border-cyber-green/40 text-cyber-green rounded-lg text-[11px] font-semibold hover:bg-cyber-green/[0.1] transition-all"
+                    >
+                      <Play className="w-3 h-3" /> Continuar desde el paso {s.num}
                     </button>
                   )}
                 </div>

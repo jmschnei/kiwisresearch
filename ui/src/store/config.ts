@@ -9,6 +9,8 @@ export interface AppConfig {
   defaultModel: string; // '' = use each agent's configured model
   defaultDepth: 'fast' | 'standard' | 'deep' | 'max';
   defaultBudgetUsd: number; // 0 = unlimited
+  listView: 'cards' | 'table';
+  listSort: 'recent' | 'oldest' | 'cost' | 'name';
   setPrefs: (p: Partial<Omit<AppConfig, 'setPrefs'>>) => void;
 }
 
@@ -18,6 +20,8 @@ export const useConfigStore = create<AppConfig>()(
       defaultModel: '',
       defaultDepth: 'standard',
       defaultBudgetUsd: 0,
+      listView: 'cards',
+      listSort: 'recent',
       setPrefs: (p) => set(p),
     }),
     { name: 'kiwisci-config' },

@@ -48,5 +48,7 @@ Define `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` en el entorno
 ## Notas
 
 - Los tokens y costes son **estimaciones** (≈4 caracteres por token y precios aproximados).
-- El backend guarda las investigaciones en memoria: al reiniciar `kiwis serve` desaparecen de la lista (los ficheros de cada
-  una quedan en `output/jobs/<id>/`).
+- Las investigaciones se **persisten** en `output/jobs/<id>/` (`job.json` con metadatos, pasos, logs y uso; `state.json` con el
+  estado completo; más los artefactos). Al arrancar, `kiwis serve` las restaura. Una investigación que estaba en curso cuando el
+  servidor se detuvo aparece como *fallida* y se puede continuar con «Continuar desde el paso N» en el inspector de pasos.
+- Eliminar una investigación borra también su carpeta.

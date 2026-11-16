@@ -141,9 +141,10 @@ export function useReexecuteStep() {
   const onError = useErrorToast();
   const push = useDashboardStore((s) => s.pushToast);
   return useMutation({
-    mutationFn: ({ id, step }: { id: string; step: number }) => pipelineApi.reexecute(id, step),
+    mutationFn: ({ id, step, cascade }: { id: string; step: number; cascade?: boolean }) =>
+      pipelineApi.reexecute(id, step, cascade),
     onSuccess: (_d, v) => {
-      push('info', `Re-ejecutando el paso ${v.step}`);
+      push('info', v.cascade ? `Continuando desde el paso ${v.step}` : `Re-ejecutando el paso ${v.step}`);
       qc.invalidateQueries({ queryKey: queryKeys.steps(v.id) });
       qc.invalidateQueries({ queryKey: queryKeys.pipeline(v.id) });
     },

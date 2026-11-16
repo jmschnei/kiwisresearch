@@ -42,10 +42,15 @@ def create_app(
     pipeline_builder: Optional[PipelineBuilder] = None,
     jobs_dir: Optional[Path] = None,
     cors_origins: Optional[list[str]] = None,
+    restore: bool = True,
 ) -> FastAPI:
     settings = settings or Settings.default()
     bus = EventBus()
     manager = JobManager(settings, bus, builder=pipeline_builder, base_dir=jobs_dir)
+    if restore:
+        restored = manager.load()
+        if restored:
+            logger.info("Restored %d research job(s) from %s", restored, manager._base_dir)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -100,7 +105,7 @@ def create_app(
     @app.post(f"{PREFIX}/pipelines/reexecute")
     async def reexecute(body: ReexecuteStepRequest):
         try:
-            log_id = manager.reexecute(body.pipelineId, body.stepNum)
+            log_id = manager.reexecute(body.pipelineId, body.stepNum, cascade=body.cascade)
         except KeyError as e:
             raise HTTPException(404, e.args[0])
         except ValueError as e:

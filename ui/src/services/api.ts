@@ -82,8 +82,8 @@ export const pipelineApi = {
   remove: (id: string) => request<null>(`/pipelines/${id}`, json('DELETE')),
   steps: (id: string) => request<ResearchStep[]>(`/pipelines/${id}/steps`),
   logs: (id: string, limit = 300) => request<(TerminalLog & { pipelineId: string })[]>(`/pipelines/${id}/logs?limit=${limit}`),
-  reexecute: (pipelineId: string, stepNum: number) =>
-    request<{ success: boolean; newLogId: string }>('/pipelines/reexecute', json('POST', { pipelineId, stepNum })),
+  reexecute: (pipelineId: string, stepNum: number, cascade = false) =>
+    request<{ success: boolean; newLogId: string }>('/pipelines/reexecute', json('POST', { pipelineId, stepNum, cascade })),
 };
 
 export const swarmApi = {

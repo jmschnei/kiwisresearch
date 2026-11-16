@@ -28,4 +28,5 @@ class UpdatePipelineStatusRequest(BaseModel):
 class ReexecuteStepRequest(BaseModel):
     pipelineId: str
     stepNum: int
+    cascade: bool = False  # also run every step after stepNum ("continue from here")
     override: Optional[dict[str, Any]] = None
