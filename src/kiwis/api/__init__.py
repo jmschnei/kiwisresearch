@@ -1,0 +1,5 @@
+"""FastAPI backend for the Kiwis dashboard (requires the ``api`` extra)."""
+
+from .app import create_app
+
+__all__ = ["create_app"]

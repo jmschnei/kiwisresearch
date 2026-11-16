@@ -42,6 +42,7 @@ class PipelineState:
     analysis: dict = field(default_factory=dict)
     paper_draft: dict = field(default_factory=dict)
     review_feedback: list[dict] = field(default_factory=list)
+    step_outputs: dict[str, dict] = field(default_factory=dict)  # role -> AgentOutput.to_dict()
     
     # Metadata
     artifacts: dict[str, str] = field(default_factory=dict)
@@ -130,6 +131,42 @@ class ResearchPipeline:
         self._agent_factory = agent_factory
         self._nodes: list[PipelineNode] = []
         self._state = PipelineState()
+        self._listeners: list[Callable[[dict], None]] = []
+        self._resume = asyncio.Event()
+        self._resume.set()
+
+    # --- Observability / control ---
+
+    @property
+    def state(self) -> PipelineState:
+        return self._state
+
+    def add_listener(self, callback: Callable[[dict], None]) -> None:
+        """Register a sync callback receiving step events (step_started/finished/failed/skipped)."""
+        self._listeners.append(callback)
+
+    def _emit(self, event_type: str, **data) -> None:
+        event = {"type": event_type, **data}
+        for cb in self._listeners:
+            try:
+                cb(event)
+            except Exception:  # a broken listener must never break the pipeline
+                logger.exception("Pipeline listener failed")
+
+    def pause(self) -> None:
+        """Pause before the next step starts (a running step is allowed to finish)."""
+        self._resume.clear()
+
+    def resume(self) -> None:
+        self._resume.set()
+
+    @property
+    def paused(self) -> bool:
+        return not self._resume.is_set()
+
+    @property
+    def phases(self) -> list[PipelinePhase]:
+        return [n.phase for n in self._topological_sort()]
     
     def add_node(
         self,
@@ -209,26 +246,49 @@ class ResearchPipeline:
         
         return self
     
-    async def run(self, research_topic: str) -> PipelineState:
-        """Execute the full pipeline for a given research topic."""
-        self._state = PipelineState(research_topic=research_topic)
-        
-        # Topological sort based on dependencies
+    async def run(self, research_topic: str, hypothesis: str = "") -> PipelineState:
+        """Execute the full pipeline. A preset ``hypothesis`` skips hypothesis generation."""
+        self._state = PipelineState(research_topic=research_topic, hypothesis=hypothesis)
         sorted_nodes = self._topological_sort()
-        
+
         logger.info(f"Starting research pipeline for: {research_topic}")
         start_time = time.monotonic()
-        
-        for node in sorted_nodes:
+
+        for index, node in enumerate(sorted_nodes):
+            await self._resume.wait()
             self._state.phase = node.phase
-            await node.execute(self._state)
-        
+            self._state.current_step = index
+            self._state.total_steps = len(sorted_nodes)
+            if node.phase == PipelinePhase.HYPOTHESIS and hypothesis:
+                self._emit("step_skipped", phase=node.phase, index=index, reason="hypothesis provided")
+                continue
+            await self._run_node(node, index)
+
         self._state.phase = PipelinePhase.COMPLETE
-        total_duration = time.monotonic() - start_time
-        
-        logger.info(f"Pipeline complete. Total duration: {total_duration:.2f}s")
+        logger.info(f"Pipeline complete. Total duration: {time.monotonic() - start_time:.2f}s")
         return self._state
-    
+
+    async def _run_node(self, node: PipelineNode, index: int) -> None:
+        self._emit("step_started", phase=node.phase, index=index)
+        started = time.monotonic()
+        try:
+            await node.execute(self._state)
+        except Exception as e:
+            self._emit("step_failed", phase=node.phase, index=index, error=str(e),
+                       duration=time.monotonic() - started)
+            raise
+        self._emit("step_finished", phase=node.phase, index=index, duration=time.monotonic() - started)
+
+    async def rerun_phase(self, phase: PipelinePhase) -> PipelineState:
+        """Re-execute a single phase on the current state (e.g. after a failure)."""
+        nodes = self._topological_sort()
+        index, node = next(((i, n) for i, n in enumerate(nodes) if n.phase == phase), (None, None))
+        if node is None:
+            raise ValueError(f"No node for phase {phase}")
+        self._state.phase = phase
+        await self._run_node(node, index)
+        return self._state
+
     def _topological_sort(self) -> list[PipelineNode]:
         """Topological sort of pipeline nodes by dependencies."""
         visited = set()
@@ -254,20 +314,26 @@ class ResearchPipeline:
     def _agent(self, role: str):
         return self._agent_factory(role)
 
+    async def _run_agent(self, role: str, state: PipelineState):
+        """Create the agent for ``role``, run it and record its output in the state."""
+        output = await self._agent(role).execute(state)
+        state.step_outputs[role] = output.to_dict()
+        return output
+
     async def _run_hypothesis_generation(self, state: PipelineState):
-        output = await self._agent("ideation").execute(state)
+        output = await self._run_agent("ideation", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Hypothesis generation failed")
         if output.data.get("hypotheses") and not state.hypothesis:
             state.hypothesis = output.data["hypotheses"][0].get("hypothesis", "")
 
     async def _run_literature_review(self, state: PipelineState):
-        output = await self._agent("librarian").execute(state)
+        output = await self._run_agent("librarian", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Literature review failed")
 
     async def _run_experiment_design(self, state: PipelineState):
-        output = await self._agent("experiment_architect").execute(state)
+        output = await self._run_agent("experiment_architect", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Experiment design failed")
 
@@ -278,21 +344,21 @@ class ResearchPipeline:
             factory = getattr(self, "_default_factory", None)
             if factory is not None:
                 factory._sandbox = self._sandbox
-        output = await self._agent("engineer").execute(state)
+        output = await self._run_agent("engineer", state)
         if output.state.name not in ("COMPLETED", "FAILED"):
             raise RuntimeError("Experiment execution failed")
 
     async def _run_analysis(self, state: PipelineState):
-        output = await self._agent("data_analyst").execute(state)
+        output = await self._run_agent("data_analyst", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Data analysis failed")
 
     async def _run_paper_writing(self, state: PipelineState):
-        output = await self._agent("writer").execute(state)
+        output = await self._run_agent("writer", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Paper writing failed")
 
     async def _run_peer_review(self, state: PipelineState):
-        output = await self._agent("reviewer").execute(state)
+        output = await self._run_agent("reviewer", state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Peer review failed")

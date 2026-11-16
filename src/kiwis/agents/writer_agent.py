@@ -70,8 +70,9 @@ Respond in this structure:
 }
 ```"""
 
-    def __init__(self, llm_provider=None, model_config=None):
+    def __init__(self, llm_provider=None, model_config=None, output_dir=None):
         super().__init__("writer-agent")
+        self._output_dir = output_dir
         self._llm = llm_provider
         self._model_config = model_config
 
@@ -128,7 +129,7 @@ Ensure the narrative is coherent and compelling."""
         latex_content = self._generate_latex(paper_data, context)
         
         # Save artifacts
-        output_dir = Path("/tmp/kiwis_output")
+        output_dir = Path(self._output_dir) if self._output_dir else Path("/tmp/kiwis_output")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         paper_path = output_dir / "paper.tex"

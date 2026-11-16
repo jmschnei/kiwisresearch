@@ -62,6 +62,12 @@ def main():
     research_parser.add_argument("-c", "--config", help="Path to config file", default=None)
     research_parser.add_argument("-n", "--iterations", type=int, default=1, help="Number of iterations")
     
+    # Serve command
+    serve_parser = subparsers.add_parser("serve", help="Run the dashboard API (FastAPI)")
+    serve_parser.add_argument("-c", "--config", help="Path to config file", default=None)
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8000)
+
     # Generate command
     gen_parser = subparsers.add_parser("generate", help="Generate code for a specific agent")
     gen_parser.add_argument("agent", choices=["ideation", "librarian", "architect", "engineer", "analyst", "writer", "reviewer"])
@@ -105,6 +111,17 @@ logging:
     elif args.command == "research":
         state = asyncio.run(run_research(args.topic, config_path=args.config, iterations=args.iterations))
     
+    elif args.command == "serve":
+        try:
+            import uvicorn
+            from .api import create_app
+        except ImportError:
+            sys.exit("The API needs extra dependencies: pip install -e '.[api]'")
+        from .config.settings import load_settings
+        settings = load_settings(args.config)
+        setup_logging(settings.logging.level)
+        uvicorn.run(create_app(settings), host=args.host, port=args.port)
+
     elif args.command == "generate":
         logger = logging.getLogger("kiwis.cli")
         setup_logging()

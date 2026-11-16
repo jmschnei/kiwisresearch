@@ -65,7 +65,7 @@ export interface ResearchStep {
 
 export interface Artifact {
   id: string;
-  type: 'pdf' | 'png' | 'svg' | 'csv' | 'json' | 'md';
+  type: 'pdf' | 'png' | 'svg' | 'csv' | 'json' | 'md' | 'tex' | 'py';
   name: string;
   size: string;
   thumbnail?: string;
