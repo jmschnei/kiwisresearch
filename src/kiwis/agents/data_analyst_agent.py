@@ -95,7 +95,7 @@ Provide significance testing where appropriate."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Data Analyst placeholder"
 

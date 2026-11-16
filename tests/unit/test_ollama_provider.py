@@ -54,7 +54,7 @@ def test_ollama_provider_chat_mocked():
     ]
     config = ModelConfig(model_name="llama3.2")
     
-    with patch.object(provider, 'client', new_callable=lambda: AsyncMock()) as mock_client:
+    with patch.object(provider, '_client', new=AsyncMock()) as mock_client:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {

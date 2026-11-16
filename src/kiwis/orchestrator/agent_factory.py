@@ -1,0 +1,79 @@
+"""Builds agents wired with their configured LLM provider and model settings."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from ..config.agents import AgentRole
+from ..config.settings import Settings
+from ..models.base import ModelConfig
+from ..models.factory import ProviderPool, infer_provider_name
+
+
+logger = logging.getLogger(__name__)
+
+
+class AgentFactory:
+    """Creates agents from ``Settings`` (per-agent model, temperature, provider)."""
+
+    def __init__(self, settings: Optional[Settings] = None, sandbox=None):
+        self._settings = settings or Settings.default()
+        self._sandbox = sandbox
+        self._pool = ProviderPool(self._settings.providers)
+        self._vector_store = None
+        self._vector_store_built = False
+
+    def vector_store(self):
+        """Shared vector store (None if disabled or unavailable). Initialized lazily by its users."""
+        if not self._vector_store_built:
+            self._vector_store_built = True
+            mem = self._settings.memory
+            if mem.enabled and mem.vector_store == "chroma":
+                try:
+                    import chromadb  # noqa: F401
+                    from ..memory.vector_store import ChromaStore
+                    self._vector_store = ChromaStore(
+                        persist_dir=mem.persist_dir,
+                        collection_name=mem.collection,
+                        embed_fn=self._embed_fn(),
+                    )
+                except Exception as e:
+                    logger.warning(f"Vector store unavailable ({e}); literature will not be indexed")
+            elif mem.enabled:
+                logger.warning(f"Vector store '{mem.vector_store}' is not implemented; indexing disabled")
+        return self._vector_store
+
+    def _embed_fn(self):
+        """Use the OpenAI provider's embeddings when available; else Chroma's default embedder."""
+        provider = self._pool.get("openai")
+        return provider.embed if provider is not None else None
+
+    def _agent_classes(self) -> dict[AgentRole, type]:
+        from .. import agents as a
+        return {
+            AgentRole.IDEATION: a.IdeationAgent,
+            AgentRole.LIBRARIAN: a.LibrarianAgent,
+            AgentRole.EXPERIMENT_ARCHITECT: a.ExperimentArchitectAgent,
+            AgentRole.ENGINEER: a.EngineerAgent,
+            AgentRole.DATA_ANALYST: a.DataAnalystAgent,
+            AgentRole.WRITER: a.WriterAgent,
+            AgentRole.REVIEWER: a.ReviewerAgent,
+        }
+
+    def create(self, role: AgentRole | str) -> Any:
+        role = AgentRole(role)
+        cfg = self._settings.agents.get_agent(role)
+        provider_name = cfg.provider or infer_provider_name(cfg.model)
+        model_name = cfg.model.split("/", 1)[1] if cfg.model.lower().startswith("ollama/") else cfg.model
+        kwargs: dict[str, Any] = {
+            "llm_provider": self._pool.get(provider_name),
+            "model_config": ModelConfig(
+                model_name=model_name, temperature=cfg.temperature, max_tokens=cfg.max_tokens
+            ),
+        }
+        if role == AgentRole.LIBRARIAN:
+            kwargs["vector_store"] = self.vector_store()
+        if role == AgentRole.ENGINEER:
+            kwargs["sandbox"] = self._sandbox
+        return self._agent_classes()[role](**kwargs)

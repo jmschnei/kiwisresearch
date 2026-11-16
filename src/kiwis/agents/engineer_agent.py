@@ -96,7 +96,7 @@ Use standard practices: argparse configs, logging, checkpoints."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Engineer placeholder"
 
@@ -179,9 +179,9 @@ Return ONLY the corrected Python code inside a ```python block.
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=debug_prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
             
-            fix_match = re.search(r'```(?:python)?\s*\n(.*?)```', response, re.DOTALL)
+            fix_match = re.search(r'```(?:python)?\s*\n(.*?)```', response_text, re.DOTALL)
             if fix_match:
                 return fix_match.group(1)
         

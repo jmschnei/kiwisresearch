@@ -56,7 +56,7 @@ With a 1-page detailed justification."""
 
 Your role is to critically evaluate the research quality and identify ALL weaknesses before publication.
 
-{self.REVIEW_CRITERIA}
+{REVIEW_CRITERIA}
 
 Be specific and constructive. For each issue found, explain:
 - What is wrong or unclear
@@ -147,7 +147,7 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Reviewer placeholder"
 

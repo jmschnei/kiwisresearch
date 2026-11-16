@@ -22,7 +22,7 @@ class AgentConfig(BaseModel):
     """Configuration for a single agent."""
     role: AgentRole
     model: str = Field(default="gpt-4o")
-    provider: str = Field(default="openai")
+    provider: Optional[str] = Field(default=None)  # None -> inferred from model name
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     system_prompt_path: Optional[str] = None
     max_tokens: int = Field(default=8192, ge=256)

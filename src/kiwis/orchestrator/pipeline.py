@@ -119,8 +119,15 @@ class ResearchPipeline:
         sandbox=None,
     ):
         self._settings = settings
-        self._agent_factory = agent_factory
         self._sandbox = sandbox
+        # agent_factory: callable taking a role name and returning an agent.
+        # Default: build agents from settings (provider + model per agent).
+        if agent_factory is None:
+            from .agent_factory import AgentFactory
+            factory = AgentFactory(settings, sandbox=sandbox)
+            agent_factory = factory.create
+            self._default_factory = factory
+        self._agent_factory = agent_factory
         self._nodes: list[PipelineNode] = []
         self._state = PipelineState()
     
@@ -243,64 +250,49 @@ class ResearchPipeline:
         return result
     
     # --- Phase implementations ---
-    
+
+    def _agent(self, role: str):
+        return self._agent_factory(role)
+
     async def _run_hypothesis_generation(self, state: PipelineState):
-        from ..agents import IdeationAgent
-        from ..config.agents import AgentConfig
-        
-        agent = IdeationAgent(
-            llm_provider=None,  # Inject via factory
-        )
-        output = await agent.execute(state)
-        if output.state.name == "COMPLETED" and output.data.get("hypotheses"):
+        output = await self._agent("ideation").execute(state)
+        if output.state.name != "COMPLETED":
+            raise RuntimeError("Hypothesis generation failed")
+        if output.data.get("hypotheses") and not state.hypothesis:
             state.hypothesis = output.data["hypotheses"][0].get("hypothesis", "")
-    
+
     async def _run_literature_review(self, state: PipelineState):
-        from ..agents import LibrarianAgent
-        
-        agent = LibrarianAgent()
-        output = await agent.execute(state)
+        output = await self._agent("librarian").execute(state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Literature review failed")
-    
+
     async def _run_experiment_design(self, state: PipelineState):
-        from ..agents import ExperimentArchitectAgent
-        
-        agent = ExperimentArchitectAgent()
-        output = await agent.execute(state)
+        output = await self._agent("experiment_architect").execute(state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Experiment design failed")
-    
+
     async def _run_experiment_execution(self, state: PipelineState):
-        from ..agents import EngineerAgent
-        from ..execution.isolated_sandbox import IsolatedSandbox
-        
-        sandbox = self._sandbox or IsolatedSandbox()
-        agent = EngineerAgent(sandbox=sandbox)
-        output = await agent.execute(state)
+        if self._sandbox is None:
+            from ..execution.isolated_sandbox import IsolatedSandbox
+            self._sandbox = IsolatedSandbox()
+            factory = getattr(self, "_default_factory", None)
+            if factory is not None:
+                factory._sandbox = self._sandbox
+        output = await self._agent("engineer").execute(state)
         if output.state.name not in ("COMPLETED", "FAILED"):
             raise RuntimeError("Experiment execution failed")
-    
+
     async def _run_analysis(self, state: PipelineState):
-        from ..agents import DataAnalystAgent
-        
-        agent = DataAnalystAgent()
-        output = await agent.execute(state)
+        output = await self._agent("data_analyst").execute(state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Data analysis failed")
-    
+
     async def _run_paper_writing(self, state: PipelineState):
-        from ..agents import WriterAgent
-        
-        agent = WriterAgent()
-        output = await agent.execute(state)
+        output = await self._agent("writer").execute(state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Paper writing failed")
-    
+
     async def _run_peer_review(self, state: PipelineState):
-        from ..agents import ReviewerAgent
-        
-        agent = ReviewerAgent()
-        output = await agent.execute(state)
+        output = await self._agent("reviewer").execute(state)
         if output.state.name != "COMPLETED":
             raise RuntimeError("Peer review failed")

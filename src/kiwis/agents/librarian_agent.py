@@ -51,10 +51,53 @@ Respond in structured JSON:
 }
 ```"""
 
-    def __init__(self, llm_provider=None, model_config=None):
+    def __init__(self, llm_provider=None, model_config=None, vector_store=None, top_k_related: int = 10):
         super().__init__("librarian-agent")
         self._llm = llm_provider
         self._model_config = model_config
+        self._store = vector_store
+        self._top_k_related = top_k_related
+
+    async def _index_and_recall(self, topic: str, papers: list[dict]) -> list[dict]:
+        """Index fresh papers in the vector store and recall related ones saved in earlier runs.
+
+        Never raises: a broken store must not break the literature review.
+        """
+        if self._store is None:
+            return []
+        try:
+            from ..memory.vector_store import MemoryRecord
+
+            await self._store.initialize()
+            records = []
+            for p in papers:
+                text = f"{p.get('title', '')}\n{p.get('summary') or p.get('abstract') or ''}".strip()
+                if p.get("id") and text:
+                    meta = {k: p.get(k) for k in ("title", "authors", "year", "source", "venue")}
+                    records.append(MemoryRecord(id=p["id"], text=text, metadata=meta))
+            await self._store.add_documents(records)
+
+            known = {p.get("id") for p in papers}
+            related = []
+            for doc_id, score in await self._store.search(topic, top_k=self._top_k_related):
+                if doc_id in known:
+                    continue
+                doc = await self._store.get_document(doc_id)
+                if doc:
+                    related.append({
+                        "id": doc.id,
+                        "title": doc.metadata.get("title", "Unknown"),
+                        "authors": [a for a in str(doc.metadata.get("authors", "")).split(", ") if a],
+                        "year": doc.metadata.get("year", "?"),
+                        "source": "vector_store",
+                        "summary": doc.text,
+                        "relevance_score": round(score, 3),
+                    })
+            return related
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Vector store unavailable for literature indexing: {e}")
+            return []
 
     async def execute(self, context: AgentContext) -> AgentOutput:
         self.state = AgentState.RUNNING
@@ -64,7 +107,12 @@ Respond in structured JSON:
         # Step 1: Search academic APIs in parallel
         papers_from_arxiv = await self._search_arxiv(topic)
         papers_from_s2 = await self._search_semantic_scholar(topic)
-        all_papers = papers_from_arxiv + papers_from_s2
+        found = papers_from_arxiv + papers_from_s2
+        valid_papers = [p for p in found if "error" not in p]
+
+        # Index new papers and recall related ones from previous runs
+        related_papers = await self._index_and_recall(topic, valid_papers)
+        all_papers = found + related_papers
 
         prompt = f"""Research Topic: {topic}
 
@@ -80,7 +128,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Librarian placeholder: LLM not configured"
 
@@ -102,7 +150,8 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
             agent_name=self.name,
             state=AgentState.COMPLETED,
             data={
-                "num_papers_found": len(all_papers),
+                "num_papers_found": len(valid_papers),
+                "num_related_from_memory": len(related_papers),
                 "summary": data.get("summary", ""),
                 "gaps_identified": data.get("gaps", []),
             },

@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from .agents import AgentRegistry
+from .llm_providers import ProviderRegistry
 
 
 class PathsConfig(BaseModel):
@@ -46,6 +49,14 @@ class LoggingConfig(BaseModel):
     file: Optional[Path] = Field(default=Path("output", "kiwis.log"))
 
 
+class MemoryConfig(BaseModel):
+    """Vector store settings."""
+    enabled: bool = Field(default=True)
+    vector_store: str = Field(default="chroma")  # only "chroma" is implemented
+    persist_dir: str = Field(default="./chroma_kiwis")
+    collection: str = Field(default="kiwis_papers")
+
+
 class Settings(BaseModel):
     """Top-level settings for the Kiwis Research system."""
     project_name: str = Field(default="kiwis-research")
@@ -53,10 +64,52 @@ class Settings(BaseModel):
     pipeline: ResearchPipelineConfig = Field(default_factory=ResearchPipelineConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
     # LLM defaults (can be overridden per-agent)
     default_provider: str = Field(default="openai")
     default_model: str = Field(default="gpt-4o")
+
+    # Per-agent model settings and LLM provider registry
+    agents: AgentRegistry = Field(default_factory=AgentRegistry)
+    providers: ProviderRegistry = Field(default_factory=ProviderRegistry.with_defaults)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_yaml(cls, data):
+        """Accept the YAML layout: agents without explicit role, partial provider overrides."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        agents = data.get("agents")
+        if isinstance(agents, dict):
+            data["agents"] = {
+                key: {"role": key, **cfg} if isinstance(cfg, dict) else cfg
+                for key, cfg in agents.items()
+            }
+        providers = data.get("providers")
+        if isinstance(providers, dict) and "providers" not in providers:
+            merged = {
+                name: cfg.model_dump() for name, cfg in ProviderRegistry.with_defaults().providers.items()
+            }
+            for name, cfg in providers.items():
+                base = merged.get(name, {"name": name})
+                merged[name] = {**base, **(cfg or {})}
+            data["providers"] = {"providers": merged}
+        # Optional [ollama] block overrides the Ollama provider endpoint/model
+        ollama = data.get("ollama")
+        if isinstance(ollama, dict) and ollama.get("enabled"):
+            prov = data.setdefault("providers", {})
+            if "providers" not in prov:
+                prov = data["providers"] = {
+                    "providers": {n: c.model_dump() for n, c in ProviderRegistry.with_defaults().providers.items()}
+                }
+            o = prov["providers"].setdefault("ollama", {"name": "Ollama (local)", "provider_type": "ollama"})
+            if ollama.get("base_url"):
+                o["base_url"] = ollama["base_url"]
+            if ollama.get("default_model"):
+                o["default_model"] = ollama["default_model"]
+        return data
     
     @classmethod
     def from_file(cls, path: Path | str) -> Settings:
@@ -68,3 +121,8 @@ class Settings(BaseModel):
     @classmethod
     def default(cls) -> Settings:
         return cls()
+
+
+def load_settings(path: Path | str | None = None) -> Settings:
+    """Load settings from a YAML file, or return defaults when no path is given."""
+    return Settings.from_file(path) if path else Settings.default()

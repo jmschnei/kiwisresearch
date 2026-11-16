@@ -72,7 +72,7 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Placeholder: LLM not configured\n# Hypothesis generation requires an active LLM provider."
         
@@ -98,7 +98,6 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
         if data.get("hypotheses"):
             top = data["hypotheses"][data.get("top_hypothesis_index", 0)]
             context.hypothesis = top.get("hypothesis", "")
-            context.research_topic = data.get("rationale", current_knowledge)
 
         self.state = AgentState.COMPLETED
         self.output = AgentOutput(

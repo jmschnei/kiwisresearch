@@ -16,27 +16,28 @@ class ConferenceFormat:
     margin_inch: float = 1.0
     
     def get_preamble(self) -> str:
-        return f"""\\documentclass[{"{font_size}"pt,letterpaper]{{article}}
-\\usepackage[utf8]{{inputenc}}
-\\usepackage[T1]{{fontenc}}
-\\usepackage{{hyperref}}
-\\usepackage{{natbib}}
-\\usepackage{{amsmath,amssymb,bm}}
-\\usepackage{{algorithm,algpseudocode,float,booktabs,multirow}}
-\\usepackage{{pgfplots,subcaption,graphicx,geometry,caption,subfigure}}
-\\usepackage{{enumitem,xcolor,mathtools,empheq,microtype,soul,tikz,adjustbox,paralist,makecell,textcomp,rotating,setspace}}
-\\geometry{{margin={"{self.margin_inch}"in}}}
-\\pagestyle{{fancy}}
-\\renewcommand{{\\headrulewidth}}{{0pt}}
-\\fancyhf{{}}
-\\setlength{{\\parindent}}{{0pt}}}
-\\setlength{{\\parskip}}{{6pt}}}"""
+        return (
+            f"\\documentclass[{self.font_size}pt,letterpaper]{{article}}\n"
+            "\\usepackage[utf8]{inputenc}\n"
+            "\\usepackage[T1]{fontenc}\n"
+            "\\usepackage{hyperref}\n"
+            "\\usepackage{natbib}\n"
+            "\\usepackage{amsmath,amssymb,bm}\n"
+            "\\usepackage{algorithm,algpseudocode,float,booktabs,multirow}\n"
+            "\\usepackage{graphicx,geometry,caption,subcaption,fancyhdr,xcolor}\n"
+            f"\\geometry{{margin={self.margin_inch}in}}\n"
+            "\\pagestyle{fancy}\n"
+            "\\renewcommand{\\headrulewidth}{0pt}\n"
+            "\\fancyhf{}\n"
+            "\\setlength{\\parindent}{0pt}\n"
+            "\\setlength{\\parskip}{6pt}"
+        )
 
     def get_conf_specific(self) -> str:
         if "NeurIPS" in self.conference_name:
-            return "\\usepackage{{{conference_neurips}}}  % NeurIPS style (loaded separately)"
+            return "\\usepackage{conference_neurips}  % NeurIPS style (loaded separately)"
         elif "ICML" in self.conference_name:
-            return "\\usepackage{{{icml2024}}}  % ICML style (loaded separately)"
+            return "\\usepackage{icml2024}  % ICML style (loaded separately)"
         return ""
 
 
@@ -63,10 +64,12 @@ class PaperTemplate:
         )
 
         bib_str = ""
-        if self.bibliography_entries:
-            entries = [f"@misc{{{e.get('key', 'x')},\\n  title={{{e.get('title', '')}}},\\n  year={{{e.get('year', '?')}}}\\n}}" 
-                       for e in self.bibliography_entries[:20]]
-            bib_str = "\\bibitem{{{no_bibs}}} Placeholder — replace with real BibTeX entries."
+        for i, e in enumerate(self.bibliography_entries[:50]):
+            key = e.get("key", f"ref{i+1}")
+            text = e.get("text") or f"{e.get('title', 'Untitled')} ({e.get('year', '?')})"
+            bib_str += f"\\bibitem{{{key}}} {text}\n"
+        if not bib_str:
+            bib_str = "\\bibitem{placeholder} No bibliography entries provided.\n"
 
         tables_str = ""
         for i, tbl in enumerate(self.tables):
@@ -87,7 +90,7 @@ class PaperTemplate:
             placeholder = fig.get("placeholder", f"Figure {i+1}")
             figures_str += f"""\\begin{{figure}}[ht]
 \\centering
-\\fbox{{\\parbox{{0.8\\textwidth}}{{\\vfill\\centering{placeholder}\\vfill}}}
+\\fbox{{\\parbox{{0.8\\textwidth}}{{\\centering {placeholder}}}}}
 \\caption{{{caption}}}
 \\label{{fig:{i+1}}}
 \\end{{figure}}
@@ -105,7 +108,7 @@ class PaperTemplate:
         return f"""{self.format.get_preamble()}
 
 \\title{{{self.title}}}
-\\author{{{authors_str}}}\n{{\\small\\textsuperscript{{1}}{affiliations_str} \\\\ {{{self.conference_name}, {self.format.year}}}}}
+\\author{{{authors_str}}}\n{{\\small\\textsuperscript{{1}}{affiliations_str} \\\\ {{{self.format.conference_name}, {self.format.year}}}}}
 
 \\begin{{document}}
 \\maketitle

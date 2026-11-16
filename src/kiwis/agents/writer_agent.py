@@ -113,7 +113,7 @@ Ensure the narrative is coherent and compelling."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response = await self._llm.chat(msgs, config)
+            response_text = (await self._llm.chat(msgs, config)).content
         else:
             response_text = "# Writer placeholder"
 
@@ -151,7 +151,8 @@ Ensure the narrative is coherent and compelling."""
             from ..execution.sandbox import ExecutionResult
             import subprocess
             result = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", str(paper_path)],
+                ["pdflatex", "-interaction=nonstopmode", paper_path.name],
+                cwd=str(paper_path.parent),
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode == 0:
@@ -182,64 +183,47 @@ Ensure the narrative is coherent and compelling."""
         tables = paper_data.get("tables", [])
         bibliography = paper_data.get("bibliography_entries", [])
         
-        # Build bibliography string
-        bib_entries = "\n".join([
-            f"@misc{{{entry['key']},\n  title={{{entry['text'].split('.')[0]}}},\n}}" 
-            for entry in bibliography[:30]
+        # Build bibliography (thebibliography items)
+        bib_entries = "\n".join(
+            f"\\bibitem{{{entry.get('key', f'ref{i+1}')}}} {entry.get('text', '')}"
+            for i, entry in enumerate(bibliography[:30])
+        )
+        title = paper_data.get("title", "Untitled")
+        abstract = sections.get("abstract", paper_data.get("abstract", ""))
+        bib_block = bib_entries or "\\bibitem{none} No bibliography entries provided."
+
+        def sec(name: str, key: str) -> str:
+            return f"\\section{{{name}}}\n{sections.get(key, '')}\n"
+
+        body = "\n".join([
+            sec("Introduction", "introduction"),
+            sec("Related Work", "related_work"),
+            sec("Methodology", "methodology"),
+            sec("Experiments", "experiments"),
+            sec("Results", "results"),
+            sec("Analysis", "analysis"),
+            sec("Conclusion", "conclusion"),
         ])
-
-        tex_content = f"""\\documentclass[10pt,letterpaper]{{"article"}}
-\\usepackage[utf8]{{{{"inputenc"}}}}
-\\usepackage[T1]{{{{"fontenc"}}}}
-\\usepackage{{{{hyperref}}}}
-\\usepackage{{{{natbib}}}}
-\\usepackage{{{{amsmath}},{ "amssymb" }, { "bm" }}}
-\\usepackage{{{{algorithm}},{ "algpseudocode}},{ "float}},{ "booktabs}},{ "multirow}},{ "pgfplots}},{ "subcaption}},{ "graphicx}},{ "geometry}},{ "caption}},{ "subfigure}},{ "enumitem}},{ "xcolor}}
-\\usepackage{{{{threeparttable}},{ "mathtools}},{ "empheq}},{ "microtype}},{ "soul}},{ "tikz}},{ "adjustbox}},{ "paralist}},{ "makecell}},{ "textcomp}},{ "rotating}},{ "setspace}},{ "hyperref}},{ "url}},{ "fancyhdr}},{ "titlesec}},{ "xurl}},{ "lineno}},{ "footmisc}},{ "csquotes}}
-
-\\geometry{{margin=1in}}
-\\pagestyle{{{{"fancy"}}}}
-\\renewcommand{{\\headrulewidth}}{{0pt}}
-\\fancyhf{{}}
-\\setlength{{\\parindent}}{{0pt}}}
-\\setlength{{\\parskip}}{{6pt}}}
-
-\\title{{{paper_data.get('title', 'Untitled')}}}
-\\author{{Kiwis Research System}}
-\\date{{2024}}
-
-\\begin{{document}}
-\\maketitle
-
-\\begin{{abstract}}
-{sections.get('abstract', paper_data.get('abstract', ''))}
-\\end{{abstract}}
-
-\\section{{Introduction}}
-{sections.get('introduction', '')}
-
-\\section{{Related Work}}
-{sections.get('related_work', '')}
-
-\\section{{Methodology}}
-{sections.get('methodology', '')}
-
-\\section{{Experiments}}
-{sections.get('experiments', '')}
-
-\\section{{Results}}
-{sections.get('results', '')}
-
-\\section{{Analysis}}
-{sections.get('analysis', '')}
-
-\\section{{Conclusion}}
-{sections.get('conclusion', '')}
-
-\\begin{{thebibliography}}{{99}}
-{bib_entries if bib_entries else '\\bibitem{{{no_bibs}}} No bibliography entries provided.'}
-\\end{{thebibliography}}
-
-\\end{{document}}
-"""
+        tex_content = (
+            "\\documentclass[10pt,letterpaper]{article}\n"
+            "\\usepackage[utf8]{inputenc}\n"
+            "\\usepackage[T1]{fontenc}\n"
+            "\\usepackage{hyperref,natbib,amsmath,amssymb,bm}\n"
+            "\\usepackage{algorithm,algpseudocode,float,booktabs,multirow}\n"
+            "\\usepackage{graphicx,geometry,caption,subcaption,fancyhdr,xcolor}\n"
+            "\\geometry{margin=1in}\n"
+            "\\pagestyle{fancy}\n"
+            "\\renewcommand{\\headrulewidth}{0pt}\n"
+            "\\fancyhf{}\n"
+            "\\setlength{\\parindent}{0pt}\n"
+            "\\setlength{\\parskip}{6pt}\n\n"
+            f"\\title{{{title}}}\n"
+            "\\author{Kiwis Research System}\n"
+            "\\date{\\today}\n\n"
+            "\\begin{document}\n\\maketitle\n\n"
+            f"\\begin{{abstract}}\n{abstract}\n\\end{{abstract}}\n\n"
+            f"{body}\n"
+            f"\\begin{{thebibliography}}{{99}}\n{bib_block}\n\\end{{thebibliography}}\n\n"
+            "\\end{document}\n"
+        )
         return tex_content

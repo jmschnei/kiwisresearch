@@ -21,7 +21,7 @@ def test_pipeline_builds_default():
     pipeline.build_default_pipeline()
     
     nodes = pipeline._nodes
-    assert len(nodes) == 8  # 8 phases
+    assert len(nodes) == 7  # 7 phases
     
     phases = [n.phase for n in nodes]
     assert PipelinePhase.HYPOTHESIS in phases

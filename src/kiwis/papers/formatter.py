@@ -38,7 +38,7 @@ def format_results_table(
     lines = []
     # Table header
     header_cols = ["Method"] + [m.replace("_", "\\_") for m in metric_names]
-    lines.append("\\begin{{table}}[ht]")
+    lines.append("\\begin{table}[ht]")
     lines.append("\\centering")
     lines.append(f"\\begin{{tabular}}{{l{ "c" * len(metric_names)}}}")
     lines.append("\\toprule")
