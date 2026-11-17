@@ -1,0 +1,13 @@
+.git
+.gitignore
+.pytest_cache
+**/__pycache__
+**/*.pyc
+docs
+tests
+output
+chroma_kiwis
+dashboard-prototipo.html
+ui/node_modules
+ui/dist
+.env

@@ -143,6 +143,7 @@ export interface BackendConfig {
   sandbox: { mode: string; timeout_seconds: number; memory_mb: number; network_isolated: boolean };
   memory: { enabled: boolean; vector_store: string; persist_dir: string; collection: string; urlConfigured: boolean };
   pipeline: Record<string, number | null>;
+  services?: Record<string, { configured: boolean; envVar: string; note: string }>;
 }
 
 export interface ReviewRound {

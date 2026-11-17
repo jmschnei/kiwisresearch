@@ -7,6 +7,14 @@ import type { WsEvent } from '@/types/api';
 export type WsState = 'connected' | 'disconnected' | 'reconnecting';
 type Listener = (event: WsEvent) => void;
 
+/** VITE_WS_URL may be absolute or a path ("/ws/events", behind a reverse proxy on the same host). */
+function defaultWsUrl(): string {
+  const env = import.meta.env.VITE_WS_URL;
+  if (!env) return 'ws://localhost:8000/ws/events';
+  if (env.startsWith('/')) return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${env}`;
+  return env;
+}
+
 export class SwarmWebSocket {
   private ws: WebSocket | null = null;
   private reconnectDelay = 1000;
@@ -17,7 +25,7 @@ export class SwarmWebSocket {
   private statusListeners = new Set<(s: WsState) => void>();
   state: WsState = 'disconnected';
 
-  constructor(private url: string = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/events') {}
+  constructor(private url: string = defaultWsUrl()) {}
 
   connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;

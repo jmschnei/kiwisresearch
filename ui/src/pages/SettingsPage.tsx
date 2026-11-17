@@ -1,7 +1,9 @@
 import { Badge } from '@/components/common/Badge';
 import { ErrorBox, Spinner } from '@/components/common/Spinner';
 import { useBackendConfig, useBackendHealth } from '@/hooks/useApi';
-import { API_BASE } from '@/services/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { API_BASE, storageApi } from '@/services/api';
 import { useConfigStore } from '@/store/config';
 import { useDashboardStore } from '@/store/dashboard';
 import { depthOptions } from '@/lib/format';
@@ -19,6 +21,74 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
     <span className="text-gray-200 terminal-font text-right">{children}</span>
   </div>
 );
+
+const fmtBytes = (n: number) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1e3)} KB`);
+
+function StorageSection() {
+  const qc = useQueryClient();
+  const info = useQuery({ queryKey: ['storage'], queryFn: storageApi.info, retry: false });
+  const [days, setDays] = useState(30);
+  const [keep, setKeep] = useState(20);
+  const [mode, setMode] = useState<'age' | 'count'>('age');
+  const body = mode === 'age' ? { olderThanDays: days } : { keepLast: keep };
+  const preview = useMutation({ mutationFn: () => storageApi.cleanup({ ...body, dryRun: true }) });
+  const clean = useMutation({
+    mutationFn: () => storageApi.cleanup(body),
+    onSuccess: () => {
+      preview.reset();
+      qc.invalidateQueries({ queryKey: ['storage'] });
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+    },
+  });
+  const r = info.data?.retention;
+
+  return (
+    <Section title="Almacenamiento">
+      {info.isLoading && <Spinner label="Calculando…" />}
+      {info.data && (
+        <>
+          <Row label="Investigaciones guardadas">{info.data.jobs} ({info.data.finished} terminadas)</Row>
+          <Row label="Espacio en disco">{fmtBytes(info.data.totalBytes)}</Row>
+          <Row label="Limpieza automática">
+            {r?.max_age_days || r?.max_jobs
+              ? [r.max_age_days && `> ${r.max_age_days} días`, r.max_jobs && `máx. ${r.max_jobs}`].filter(Boolean).join(' · ')
+              : 'desactivada (retention en kiwis_config.yaml)'}
+          </Row>
+          <div className="flex flex-wrap items-end gap-3 mt-4">
+            <label className="text-[11px] text-gray-500 space-y-1">
+              Borrar terminadas
+              <select className="form-field-select" value={mode} onChange={(e) => { setMode(e.target.value as 'age' | 'count'); preview.reset(); }}>
+                <option value="age">más antiguas que…</option>
+                <option value="count">salvo las últimas…</option>
+              </select>
+            </label>
+            <label className="text-[11px] text-gray-500 space-y-1">
+              {mode === 'age' ? 'Días' : 'Conservar'}
+              <input type="number" min={mode === 'age' ? 0 : 0} className="form-field-input w-24"
+                value={mode === 'age' ? days : keep}
+                onChange={(e) => { (mode === 'age' ? setDays : setKeep)(Number(e.target.value)); preview.reset(); }} />
+            </label>
+            <button className="px-3 py-2 text-xs rounded-lg border border-dark-primary/60 text-gray-300 hover:bg-dark-hover" onClick={() => preview.mutate()} disabled={preview.isPending}>
+              Ver qué se borraría
+            </button>
+            {preview.data && preview.data.deleted > 0 && (
+              <button className="px-3 py-2 text-xs rounded-lg bg-cyber-red/20 text-cyber-red border border-cyber-red/40 hover:bg-cyber-red/30" onClick={() => clean.mutate()} disabled={clean.isPending}>
+                Borrar {preview.data.deleted} ({fmtBytes(preview.data.freedBytes)})
+              </button>
+            )}
+          </div>
+          {preview.data && (
+            <p className="text-[11px] text-gray-500 mt-2">
+              {preview.data.deleted === 0 ? 'No hay nada que borrar con ese criterio.' : `Se borrarían: ${preview.data.items.map((i) => i.title).join(', ')}. Las investigaciones en curso o pausadas nunca se borran.`}
+            </p>
+          )}
+          {clean.data && <p className="text-[11px] text-cyber-green mt-2">Borradas {clean.data.deleted} investigaciones; liberados {fmtBytes(clean.data.freedBytes)}.</p>}
+          {(preview.error || clean.error) && <p className="text-[11px] text-cyber-red mt-2">{((preview.error || clean.error) as Error).message}</p>}
+        </>
+      )}
+    </Section>
+  );
+}
 
 export function SettingsPage() {
   const health = useBackendHealth();
@@ -96,10 +166,24 @@ export function SettingsPage() {
             <Section title="Entorno de ejecución">
               <Row label="Sandbox">{cfg.sandbox.mode}</Row>
               <Row label="Timeout">{cfg.sandbox.timeout_seconds}s</Row>
+              {cfg.services?.semanticScholar && (
+                <Row label="Semantic Scholar">
+                  {cfg.services.semanticScholar.configured
+                    ? <Badge label="API key configurada" variant="green" dot />
+                    : <Badge label="Sin API key (límite compartido)" variant="yellow" dot />}
+                </Row>
+              )}
               <Row label="Memoria vectorial">{cfg.memory.enabled ? `${cfg.memory.vector_store} (${cfg.memory.urlConfigured ? 'servidor configurado' : cfg.memory.persist_dir})` : 'desactivada'}</Row>
             </Section>
+            {cfg.services?.semanticScholar && !cfg.services.semanticScholar.configured && (
+              <p className="text-[11px] text-gray-600 -mt-3 px-1">
+                Define <code className="terminal-font text-cyber-cyan">{cfg.services.semanticScholar.envVar}</code> (clave gratuita en semanticscholar.org/product/api) para evitar los errores 429; mientras tanto la bibliografía se obtiene solo de arXiv y de la memoria.
+              </p>
+            )}
           </>
         )}
+
+        <StorageSection />
 
         <Section title="Preferencias para nuevas investigaciones">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

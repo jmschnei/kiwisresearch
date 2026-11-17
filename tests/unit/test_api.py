@@ -43,13 +43,13 @@ class FakeAgent:
         return AgentOutput(agent_name=self.role, state=AgentState.COMPLETED, data=data)
 
 
-def make_app(tmp_path, fail_role=None, delay=0.0):
+def make_app(tmp_path, fail_role=None, delay=0.0, settings=None):
     def builder(settings, tracker, out_dir):
         return ResearchPipeline(
             settings=settings,
             agent_factory=lambda role: FakeAgent(role, tracker, out_dir, fail=(role == fail_role), delay=delay),
         ).build_default_pipeline()
-    return create_app(pipeline_builder=builder, jobs_dir=tmp_path / "jobs")
+    return create_app(settings=settings, pipeline_builder=builder, jobs_dir=tmp_path / "jobs")
 
 
 def wait_for(client, pid, statuses=("completed", "failed"), timeout=15):
@@ -405,3 +405,75 @@ def test_restart_agent_and_suggest(tmp_path, monkeypatch):
         monkeypatch.setattr(LibrarianAgent, "_search_arxiv", fake)
         r = c.get("/api/v1/search/suggest", params={"domain": "chem", "topic": "gnn"}).json()
         assert r["data"][0]["title"] == "About chem gnn"
+
+
+# ---------------------------------------------------------------- storage cleanup
+
+def _age_job(tmp_path, pid, days):
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    path = tmp_path / "jobs" / pid / "job.json"
+    meta = _json.loads(path.read_text())
+    meta["updatedAt"] = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    path.write_text(_json.dumps(meta))
+
+
+def _three_jobs(tmp_path):
+    with TestClient(make_app(tmp_path)) as c:
+        ids = []
+        for _ in range(3):
+            ids.append(launch(c))
+            wait_for(c, ids[-1])
+    for pid, days in zip(ids, (30, 10, 1)):  # oldest first
+        _age_job(tmp_path, pid, days)
+    return ids
+
+
+def test_storage_cleanup_by_age_and_count(tmp_path):
+    old, mid, new = _three_jobs(tmp_path)
+    with TestClient(make_app(tmp_path)) as c:
+        s = c.get("/api/v1/storage").json()["data"]
+        assert s["jobs"] == 3 and s["finished"] == 3 and s["totalBytes"] > 0
+
+        assert c.post("/api/v1/storage/cleanup", json={}).status_code == 422
+        dry = c.post("/api/v1/storage/cleanup", json={"olderThanDays": 5, "dryRun": True}).json()["data"]
+        assert dry["dryRun"] and dry["deleted"] == 2 and (tmp_path / "jobs" / old).exists()  # nothing removed
+
+        done = c.post("/api/v1/storage/cleanup", json={"olderThanDays": 20}).json()["data"]
+        assert [i["id"] for i in done["items"]] == [old] and done["freedBytes"] > 0
+        assert not (tmp_path / "jobs" / old).exists() and (tmp_path / "jobs" / mid).exists()
+        assert c.get(f"/api/v1/pipelines/{old}").status_code == 404
+
+        assert c.post("/api/v1/storage/cleanup", json={"keepLast": 1}).json()["data"]["deleted"] == 1
+        assert [p["id"] for p in c.get("/api/v1/pipelines").json()["data"]] == [new]
+
+
+def test_cleanup_never_touches_running_jobs(tmp_path):
+    with TestClient(make_app(tmp_path, delay=0.3)) as c:
+        pid = launch(c)
+        assert c.post("/api/v1/storage/cleanup", json={"olderThanDays": 0}).json()["data"]["deleted"] == 0
+        assert c.get(f"/api/v1/pipelines/{pid}").status_code == 200
+        wait_for(c, pid)
+
+
+def test_retention_is_applied_on_startup_and_off_by_default(tmp_path):
+    from kiwis.config.settings import Settings
+    old, mid, new = _three_jobs(tmp_path)
+    with TestClient(make_app(tmp_path)) as c:  # default: nothing is deleted automatically
+        assert len(c.get("/api/v1/pipelines").json()["data"]) == 3
+    with TestClient(make_app(tmp_path, settings=Settings(retention={"max_age_days": 20}))) as c:
+        assert {p["id"] for p in c.get("/api/v1/pipelines").json()["data"]} == {mid, new}
+    with TestClient(make_app(tmp_path, settings=Settings(retention={"max_jobs": 1}))) as c:
+        assert [p["id"] for p in c.get("/api/v1/pipelines").json()["data"]] == [new]
+    assert not (tmp_path / "jobs" / old).exists() and not (tmp_path / "jobs" / mid).exists()
+
+
+def test_config_reports_semantic_scholar_key_without_leaking_it(tmp_path, monkeypatch):
+    with TestClient(make_app(tmp_path)) as c:
+        monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
+        svc = c.get("/api/v1/config").json()["data"]["services"]["semanticScholar"]
+        assert svc["configured"] is False and svc["envVar"] == "SEMANTIC_SCHOLAR_API_KEY"
+        monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s3cret-key-value")
+        r = c.get("/api/v1/config")
+        assert r.json()["data"]["services"]["semanticScholar"]["configured"] is True
+        assert "s3cret-key-value" not in r.text

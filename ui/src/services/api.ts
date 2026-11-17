@@ -125,6 +125,27 @@ export const searchApi = {
     request<PaperHit[]>(`/search/papers?q=${encodeURIComponent(query)}&n=${n}`, {}, 60_000),
 };
 
+export interface StorageInfo {
+  jobs: number;
+  finished: number;
+  totalBytes: number;
+  items: { id: string; title: string; status: string; updatedAt: string; bytes: number }[];
+  retention: { max_age_days: number | null; max_jobs: number | null };
+}
+
+export interface CleanupResult {
+  dryRun: boolean;
+  deleted: number;
+  freedBytes: number;
+  items: { id: string; title: string; bytes: number }[];
+}
+
+export const storageApi = {
+  info: () => request<StorageInfo>('/storage'),
+  cleanup: (body: { olderThanDays?: number; keepLast?: number; dryRun?: boolean }) =>
+    request<CleanupResult>('/storage/cleanup', json('POST', body)),
+};
+
 export const systemApi = {
   config: () => request<BackendConfig>('/config'),
   health: async () => {

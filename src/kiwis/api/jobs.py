@@ -42,13 +42,12 @@ def _make_sandbox(settings: Settings, output_dir: Path):
     from ..execution.isolated_sandbox import IsolatedSandbox
 
     if settings.sandbox.mode == "docker":
-        try:
-            import docker
-            docker.from_env().ping()
-            from ..execution.docker_sandbox import DockerSandbox
-            return DockerSandbox(timeout=settings.sandbox.timeout_seconds)
-        except Exception as e:
-            logger.warning(f"Docker sandbox unavailable ({e}); using isolated subprocess sandbox")
+        from ..execution.docker_sandbox import DockerSandbox, docker_available
+        if docker_available():
+            return DockerSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds,
+                                 memory_mb=settings.sandbox.memory_mb, network=not settings.sandbox.network_isolated)
+        logger.warning("Sandbox mode is 'docker' but no Docker daemon answers; falling back to the isolated "
+                       "subprocess sandbox, which does NOT isolate network or filesystem")
     return IsolatedSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds)
 
 
@@ -147,6 +146,7 @@ class JobManager:
         self._ensure_pipeline(job)
         self.jobs[job_id] = job
         self._persist(job)
+        self.apply_retention(exclude=job_id)
         job.task = asyncio.create_task(self._run(job))
         self._log(job, "Sistema", "pipeline", f"Investigación '{req.title}' iniciada", "info")
         return job
@@ -173,7 +173,79 @@ class JobManager:
                 loaded += 1
             except Exception:
                 logger.exception("Could not restore job from %s", meta_path)
+        self.apply_retention()
         return loaded
+
+    # ------------------------------------------------------------------ storage
+    @staticmethod
+    def _dir_size(path: Path) -> int:
+        total = 0
+        for root, _dirs, files in os.walk(path):
+            for name in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    pass
+        return total
+
+    def _is_finished(self, job: Job) -> bool:
+        return job.status in ("completed", "failed") and not (job.task and not job.task.done())
+
+    def storage(self) -> dict:
+        """Disk used by research jobs, per job and in total."""
+        jobs = [{"id": j.id, "title": j.request.title, "status": j.status, "updatedAt": j.updated_at,
+                 "bytes": self._dir_size(j.output_dir)} for j in self.jobs.values()]
+        return {"jobs": len(jobs), "finished": sum(1 for j in self.jobs.values() if self._is_finished(j)),
+                "totalBytes": sum(j["bytes"] for j in jobs), "items": jobs,
+                "retention": self.settings.retention.model_dump()}
+
+    def cleanup_candidates(self, older_than_days: Optional[int] = None, keep_last: Optional[int] = None,
+                           exclude: Optional[str] = None) -> list[Job]:
+        """Finished jobs that fall outside the given limits (older than N days, or beyond the newest ``keep_last``)."""
+        finished = sorted((j for j in self.jobs.values() if self._is_finished(j) and j.id != exclude),
+                          key=lambda j: j.updated_at, reverse=True)  # newest first
+        doomed: dict[str, Job] = {}
+        if keep_last is not None:
+            doomed.update({j.id: j for j in finished[keep_last:]})
+        if older_than_days is not None:
+            cutoff = datetime.now(timezone.utc).timestamp() - older_than_days * 86400
+            for j in finished:
+                try:
+                    if datetime.fromisoformat(j.updated_at).timestamp() < cutoff:
+                        doomed[j.id] = j
+                except ValueError:
+                    pass
+        return list(doomed.values())
+
+    def _remove_job(self, job: Job) -> int:
+        """Forget a finished job and delete its folder (only ever a direct child of the jobs dir)."""
+        self.jobs.pop(job.id, None)
+        freed = 0
+        if job.output_dir.resolve().parent == self._base_dir.resolve():
+            freed = self._dir_size(job.output_dir)
+            shutil.rmtree(job.output_dir, ignore_errors=True)
+        return freed
+
+    def apply_retention(self, exclude: Optional[str] = None) -> int:
+        """Apply the configured retention limits; returns how many jobs were removed."""
+        r = self.settings.retention
+        if r.max_age_days is None and r.max_jobs is None:
+            return 0
+        doomed = self.cleanup_candidates(r.max_age_days, r.max_jobs, exclude)
+        for job in doomed:
+            self._remove_job(job)
+        if doomed:
+            logger.info("Retention removed %d finished research job(s)", len(doomed))
+        return len(doomed)
+
+    async def cleanup(self, older_than_days: Optional[int] = None, keep_last: Optional[int] = None,
+                      dry_run: bool = False) -> dict:
+        doomed = self.cleanup_candidates(older_than_days, keep_last)
+        items = [{"id": j.id, "title": j.request.title, "bytes": self._dir_size(j.output_dir)} for j in doomed]
+        if not dry_run:
+            for job in doomed:
+                await asyncio.to_thread(self._remove_job, job)
+        return {"dryRun": dry_run, "deleted": len(items), "freedBytes": sum(i["bytes"] for i in items), "items": items}
 
     def _restore(self, meta_path: Path) -> None:
         meta = json.loads(meta_path.read_text())

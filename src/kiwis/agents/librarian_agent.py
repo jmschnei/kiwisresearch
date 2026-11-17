@@ -119,6 +119,10 @@ Respond in structured JSON:
             self._search_arxiv(topic), self._search_semantic_scholar(topic)
         )
         found = papers_from_arxiv + papers_from_s2
+        sources = {"arxiv": self._source_status(papers_from_arxiv), "semantic_scholar": self._source_status(papers_from_s2)}
+        for name, st in sources.items():
+            if not st["ok"]:
+                logger.warning("Literature source %s unavailable: %s", name, st["error"])
         valid_papers = [p for p in found if "error" not in p]
 
         # Index new papers and recall related ones from previous runs
@@ -167,12 +171,27 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
             data={
                 "num_papers_found": len(valid_papers),
                 "num_references": len(references),
+                "sources": sources,
                 "num_related_from_memory": len(related_papers),
                 "summary": data.get("summary", ""),
                 "gaps_identified": data.get("gaps", []),
             },
         )
         return self.output
+
+    @staticmethod
+    def _source_status(papers: list[dict]) -> dict:
+        """``{"ok", "papers", "error"}`` for one search result list (an error entry means the source failed)."""
+        errors = [p["error"] for p in papers if "error" in p]
+        return {"ok": not errors, "papers": len([p for p in papers if "error" not in p]), "error": errors[0] if errors else ""}
+
+    @staticmethod
+    def _search_error(source: str, e: Exception) -> str:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 429:
+            hint = " Set SEMANTIC_SCHOLAR_API_KEY to avoid this." if source == "Semantic Scholar" else ""
+            return f"{source} rate limit reached (HTTP 429).{hint}"
+        return f"{source} search failed: {e}"
 
     @staticmethod
     def _keywords(query: str, n: int = 6) -> list[str]:
@@ -217,7 +236,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
                     break
             return papers
         except Exception as e:
-            return [{"error": f"arXiv search failed: {e}"}]
+            return [{"error": self._search_error("arXiv", e)}]
 
     @staticmethod
     def _parse_arxiv(xml_data: str) -> list[dict]:
@@ -275,7 +294,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
                 })
             return papers
         except Exception as e:
-            return [{"error": f"Semantic Scholar search failed: {e}"}]
+            return [{"error": self._search_error("Semantic Scholar", e)}]
 
     @staticmethod
     def _format_reference_list(references: list[dict], found: list[dict]) -> str:

@@ -47,3 +47,22 @@ def test_docker_sandbox_class_exists():
     from kiwis.execution.docker_sandbox import DockerSandbox
     sandbox = DockerSandbox()
     assert sandbox._image_name == "kiwis-sandbox:latest"
+
+
+def test_make_sandbox_uses_docker_when_available_and_falls_back_otherwise(tmp_path, monkeypatch, caplog):
+    import kiwis.execution.docker_sandbox as ds
+    from kiwis.api.jobs import _make_sandbox
+    from kiwis.config.settings import Settings
+    from kiwis.execution.isolated_sandbox import IsolatedSandbox
+
+    settings = Settings(sandbox={"mode": "docker", "memory_mb": 1024, "network_isolated": False, "timeout_seconds": 30})
+    monkeypatch.setattr(ds, "docker_available", lambda *a, **k: True)
+    sbx = _make_sandbox(settings, tmp_path)
+    assert isinstance(sbx, ds.DockerSandbox) and sbx._memory_mb == 1024 and sbx._network is True and sbx._timeout == 30
+
+    monkeypatch.setattr(ds, "docker_available", lambda *a, **k: False)
+    with caplog.at_level("WARNING"):
+        assert isinstance(_make_sandbox(settings, tmp_path), IsolatedSandbox)
+    assert "does NOT isolate" in caplog.text
+
+    assert isinstance(_make_sandbox(Settings(sandbox={"mode": "isolated"}), tmp_path), IsolatedSandbox)

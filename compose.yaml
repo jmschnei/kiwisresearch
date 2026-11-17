@@ -1,0 +1,51 @@
+# Kiwis Research: API + dashboard (+ optional PostgreSQL/pgvector).
+#
+#   docker compose up --build                      -> http://localhost:8080
+#   docker compose --profile pgvector up --build   -> also starts PostgreSQL with pgvector
+#
+# Put API keys in a `.env` file next to this one (OPENAI_API_KEY=..., ANTHROPIC_API_KEY=..., ...).
+# SECURITY: the API has no authentication and can spend your LLM keys and run generated code, so the
+# dashboard is published on localhost only. Put an authenticating reverse proxy in front of it before
+# exposing it to a network.
+
+services:
+  api:
+    build: .
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SEMANTIC_SCHOLAR_API_KEY: ${SEMANTIC_SCHOLAR_API_KEY:-}
+      # With the pgvector profile: set memory.vector_store: pgvector in kiwis_config.yaml and this URL
+      KIWIS_VECTOR_URL: ${KIWIS_VECTOR_URL:-}
+    volumes:
+      - kiwis-data:/data                              # research jobs and embedded vector memory
+      - ./kiwis_config.yaml:/app/kiwis_config.yaml:ro # edit agents/models/retention here
+    restart: unless-stopped
+
+  ui:
+    build: ./ui
+    ports:
+      - "127.0.0.1:${KIWIS_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    profiles: ["pgvector"]
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}  # required with the pgvector profile; set it in .env
+      POSTGRES_DB: kiwis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kiwis"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  kiwis-data:
+  pgdata:

@@ -18,7 +18,7 @@ from ..config.settings import Settings
 from .catalog import PHASE_TABLE
 from .events import EventBus, now_iso
 from .jobs import JobManager, PipelineBuilder
-from .schemas import CreateResearchRequest, ReexecuteStepRequest, UpdatePipelineStatusRequest
+from .schemas import CleanupRequest, CreateResearchRequest, ReexecuteStepRequest, UpdatePipelineStatusRequest
 from . import views
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,17 @@ def create_app(
     @app.get(f"{PREFIX}/pipelines/{{pipeline_id}}/logs")
     async def get_logs(pipeline_id: str, limit: int = Query(200, ge=1, le=1000)):
         return _ok(job_or_404(pipeline_id).logs[-limit:])
+
+    # ------------------------------------------------------------- storage
+    @app.get(f"{PREFIX}/storage")
+    async def storage():
+        return _ok(await asyncio.to_thread(manager.storage))
+
+    @app.post(f"{PREFIX}/storage/cleanup")
+    async def storage_cleanup(body: CleanupRequest):
+        if body.olderThanDays is None and body.keepLast is None:
+            raise HTTPException(422, "Give olderThanDays and/or keepLast")
+        return _ok(await manager.cleanup(body.olderThanDays, body.keepLast, body.dryRun))
 
     # ------------------------------------------------------------- swarm
     @app.get(f"{PREFIX}/swarm/health")

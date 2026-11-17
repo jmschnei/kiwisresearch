@@ -70,11 +70,18 @@ providers:
 
 # ---- Sandbox settings ----
 sandbox:
-  mode: "isolated"                         # docker | isolated (no Docker required)
+  mode: "isolated"                         # docker (container per run) | isolated (plain subprocess: no
+                                           # network/filesystem isolation, trusted use only)
   timeout_seconds: 600
   memory_mb: 4096
   network_isolated: true
   gpu_available: false
+
+# ---- Cleanup of finished research jobs (output/jobs). Off unless a limit is set. ----
+# Only completed/failed jobs are removed (oldest first); running and paused jobs never are.
+# retention:
+#   max_age_days: 90
+#   max_jobs: 50
 
 # ---- Storage ----
 paths:

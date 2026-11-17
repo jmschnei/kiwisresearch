@@ -58,6 +58,15 @@ class MemoryConfig(BaseModel):
     url: Optional[str] = Field(default=None)  # qdrant server URL or pgvector DSN (or env KIWIS_VECTOR_URL)
 
 
+class RetentionConfig(BaseModel):
+    """Automatic cleanup of finished research jobs (output/jobs). Disabled unless a limit is set.
+
+    Only completed or failed jobs are ever removed, oldest first; running and paused jobs are never touched.
+    """
+    max_age_days: Optional[int] = Field(default=None, ge=1)  # delete finished jobs older than this
+    max_jobs: Optional[int] = Field(default=None, ge=1)      # keep at most this many finished jobs (newest)
+
+
 class Settings(BaseModel):
     """Top-level settings for the Kiwis Research system."""
     project_name: str = Field(default="kiwis-research")
@@ -66,6 +75,7 @@ class Settings(BaseModel):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
 
     # LLM defaults (can be overridden per-agent)
     default_provider: str = Field(default="openai")

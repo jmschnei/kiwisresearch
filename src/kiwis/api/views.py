@@ -183,4 +183,12 @@ def config_view(settings) -> dict:
         # `url` may embed credentials (a PostgreSQL DSN): report only whether one is set
         "memory": {**settings.memory.model_dump(exclude={"url"}), "urlConfigured": bool(settings.memory.url)},
         "pipeline": settings.pipeline.model_dump(),
+        # optional keys for literature search (only whether they are set, never the value)
+        "services": {
+            "semanticScholar": {
+                "configured": bool(os.environ.get("SEMANTIC_SCHOLAR_API_KEY")),
+                "envVar": "SEMANTIC_SCHOLAR_API_KEY",
+                "note": "Without a key Semantic Scholar rate-limits shared IPs (HTTP 429); arXiv results are still used.",
+            },
+        },
     }

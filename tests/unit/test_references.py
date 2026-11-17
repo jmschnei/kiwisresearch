@@ -170,6 +170,8 @@ def test_librarian_builds_references_from_retrieved_papers_only():
     assert "[smith2020graph]" in user and "[garciamarquez2021privacy]" in user
     assert "Semantic Scholar search failed" in user  # the model is told retrieval was incomplete
     assert "ONLY the papers provided" in llm.prompts[0][0].content
+    assert out.data["sources"]["arxiv"] == {"ok": True, "papers": 1, "error": ""}
+    assert out.data["sources"]["semantic_scholar"] == {"ok": False, "papers": 1, "error": "Semantic Scholar search failed: 429"}
 
 
 def test_librarian_with_no_papers_tells_the_model_not_to_invent():
@@ -383,3 +385,13 @@ def test_reviewer_verifies_citations_and_writer_receives_the_problems(tmp_path):
     asyncio.run(WriterAgent(llm_provider=revise, output_dir=tmp_path).execute(state))
     prompt = revise.prompts[0][1].content
     assert "CITATION CHECK" in prompt and "Abstract says nothing on privacy" in prompt
+
+
+def test_rate_limit_error_tells_how_to_fix_it():
+    import httpx
+    resp = httpx.Response(429, request=httpx.Request("GET", "https://api.semanticscholar.org/x"))
+    err = httpx.HTTPStatusError("too many", request=resp.request, response=resp)
+    msg = LibrarianAgent._search_error("Semantic Scholar", err)
+    assert "429" in msg and "SEMANTIC_SCHOLAR_API_KEY" in msg
+    assert "SEMANTIC_SCHOLAR_API_KEY" not in LibrarianAgent._search_error("arXiv", err)
+    assert LibrarianAgent._search_error("arXiv", RuntimeError("boom")) == "arXiv search failed: boom"

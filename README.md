@@ -233,6 +233,49 @@ Two further passes improve quality:
   prompt and into the writer's next revision. Only abstracts are read, so details from a paper's full text come back
   as `unverifiable`, and verdicts are advisory: nothing is deleted automatically. Skipped when no LLM is configured.
 
+## Sandbox
+
+Generated experiment code runs in one of two sandboxes (`sandbox.mode`):
+
+- **`docker`**: each run is a throw-away container built from `kiwis-sandbox` (numpy, pandas, scikit-learn, matplotlib, ...;
+  built automatically on first use). No network (unless `network_isolated: false`), `memory_mb` limit, 1 CPU, PID limit,
+  no Linux capabilities, `no-new-privileges`; files are copied in/out, no host folder is mounted. Needs a running Docker
+  daemon (the `docker` CLI; the Python SDK is not required).
+- **`isolated`**: a plain subprocess with a timeout. It does **not** restrict network or filesystem access, so use it
+  only with models and topics you trust.
+
+If `docker` is configured but no daemon answers, Kiwis logs a warning and falls back to `isolated`. LaTeX compilation
+inside Docker (`DockerSandbox.compile_latex`, image `texlive/texlive:latest-small`) is implemented but not exercised by
+the tests; the writer compiles the paper with the local `pdflatex`.
+
+## Storage cleanup
+
+Every research job keeps its files in `output/jobs/<id>/`. Nothing is deleted unless you ask:
+
+- **Settings page → Almacenamiento** shows the space used and deletes finished jobs older than N days (or all but the
+  newest N), with a preview first. API: `GET /api/v1/storage`, `POST /api/v1/storage/cleanup`.
+- **Automatic retention** in `kiwis_config.yaml`: `retention: {max_age_days: 90, max_jobs: 50}`. Applied at startup and
+  whenever a job is created. Only completed/failed jobs are ever removed; running and paused ones never are.
+
+## Deployment (Docker Compose)
+
+```bash
+echo "OPENAI_API_KEY=sk-..." > .env       # any of OPENAI/ANTHROPIC/DEEPSEEK/SEMANTIC_SCHOLAR_API_KEY
+docker compose up --build                 # dashboard on http://localhost:8080 (KIWIS_PORT to change)
+docker compose --profile pgvector up      # also PostgreSQL + pgvector (see below)
+```
+
+- `api` (FastAPI, includes TeX Live to build the PDF; `--build-arg WITH_LATEX=0` for a slim image without PDFs) and
+  `ui` (nginx serving the dashboard and proxying `/api`, `/ws`, `/health`). State lives in the `kiwis-data` volume.
+  `kiwis_config.yaml` is mounted read-only: edit it and restart.
+- **pgvector:** set `POSTGRES_PASSWORD` and `KIWIS_VECTOR_URL=postgresql://postgres:<password>@postgres:5432/kiwis` in
+  `.env` and `memory.vector_store: pgvector` in `kiwis_config.yaml`.
+- Inside the container the sandbox is `isolated` (the container is the isolation boundary). Using the `docker` sandbox
+  from a container would require mounting the host's Docker socket, which gives the container root on the host, so it is
+  deliberately not set up.
+- **There is no authentication.** Anyone who can reach the API can spend your LLM keys and run generated code. The
+  compose file publishes the dashboard on `127.0.0.1` only; put an authenticating reverse proxy in front before exposing it.
+
 ## Design Decisions
 
 1. **Agent Swarm Pattern**: Agents communicate via a shared state bus (`AgentSwarm`), enabling decoupled collaboration without tight coupling.

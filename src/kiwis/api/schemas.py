@@ -30,3 +30,9 @@ class ReexecuteStepRequest(BaseModel):
     stepNum: int
     cascade: bool = False  # also run every step after stepNum ("continue from here")
     override: Optional[dict[str, Any]] = None
+
+
+class CleanupRequest(BaseModel):
+    olderThanDays: Optional[int] = Field(default=None, ge=0)
+    keepLast: Optional[int] = Field(default=None, ge=0)
+    dryRun: bool = False
