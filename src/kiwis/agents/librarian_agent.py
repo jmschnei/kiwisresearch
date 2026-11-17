@@ -7,8 +7,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import re
+import urllib.parse
+import xml.etree.ElementTree as ET
+from ..papers.references import MAX_REFERENCES, build_references
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+
+logger = logging.getLogger(__name__)
+
+_QUERY_STOPWORDS = {"a", "an", "the", "of", "for", "in", "on", "with", "and", "to", "via", "using", "from", "by", "is", "are"}
 
 
 class LibrarianAgent(BaseAgent):
@@ -22,10 +31,13 @@ class LibrarianAgent(BaseAgent):
     SYSTEM_PROMPT = """You are the Scientific Librarian agent for a research automation system.
 
 Your responsibilities:
-1. Search academic databases for papers relevant to a given topic
+1. Study the papers you are given (each has a citation key in square brackets)
 2. Extract key information (methodology, datasets, results, limitations)
 3. Synthesize findings into a structured state-of-the-art review
 4. Identify research gaps that motivate new hypotheses
+
+Rules: use ONLY the papers provided and refer to them by their citation key. Never invent papers, authors, years
+or results; if the provided papers do not cover something, say so.
 
 Respond in structured JSON:
 ```json
@@ -37,11 +49,7 @@ Respond in structured JSON:
   "datasets_used": ["dataset1", ...],
   "papers": [
     {
-      "id": "arxiv:xxxx.xxxxx",
-      "title": "...",
-      "authors": ["..."],
-      "year": 2024,
-      "summary": "...",
+      "key": "citation key exactly as given",
       "key_contributions": ["...", ...],
       "limitations": ["...", ...],
       "relevance_score": 0.95
@@ -73,7 +81,7 @@ Respond in structured JSON:
             for p in papers:
                 text = f"{p.get('title', '')}\n{p.get('summary') or p.get('abstract') or ''}".strip()
                 if p.get("id") and text:
-                    meta = {k: p.get(k) for k in ("title", "authors", "year", "source", "venue")}
+                    meta = {k: p.get(k) for k in ("title", "authors", "year", "source", "venue", "url", "doi")}
                     records.append(MemoryRecord(id=p["id"], text=text, metadata=meta))
             await self._store.add_documents(records)
 
@@ -88,15 +96,17 @@ Respond in structured JSON:
                         "id": doc.id,
                         "title": doc.metadata.get("title", "Unknown"),
                         "authors": [a for a in str(doc.metadata.get("authors", "")).split(", ") if a],
-                        "year": doc.metadata.get("year", "?"),
+                        "year": doc.metadata.get("year"),
+                        "venue": doc.metadata.get("venue", ""),
+                        "url": doc.metadata.get("url", ""),
+                        "doi": doc.metadata.get("doi", ""),
                         "source": "vector_store",
-                        "summary": doc.text,
+                        "summary": doc.text.split("\n", 1)[1] if "\n" in doc.text else "",
                         "relevance_score": round(score, 3),
                     })
             return related
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Vector store unavailable for literature indexing: {e}")
+            logger.warning(f"Vector store unavailable for literature indexing: {e}")
             return []
 
     async def execute(self, context: AgentContext) -> AgentOutput:
@@ -105,8 +115,9 @@ Respond in structured JSON:
         topic = context.research_topic or "no topic specified"
         
         # Step 1: Search academic APIs in parallel
-        papers_from_arxiv = await self._search_arxiv(topic)
-        papers_from_s2 = await self._search_semantic_scholar(topic)
+        papers_from_arxiv, papers_from_s2 = await asyncio.gather(
+            self._search_arxiv(topic), self._search_semantic_scholar(topic)
+        )
         found = papers_from_arxiv + papers_from_s2
         valid_papers = [p for p in found if "error" not in p]
 
@@ -114,10 +125,14 @@ Respond in structured JSON:
         related_papers = await self._index_and_recall(topic, valid_papers)
         all_papers = found + related_papers
 
+        # The reference list used by the paper comes from here, never from LLM output
+        references = build_references(valid_papers + related_papers, limit=MAX_REFERENCES)
+        context.references = references
+
         prompt = f"""Research Topic: {topic}
 
-Found Papers ({len(all_papers)} results):
-{self._format_paper_list(all_papers)}
+Retrieved papers ({len(references)}); cite them by the key in square brackets:
+{self._format_reference_list(references, found)}
 
 Synthesize a comprehensive state-of-the-art review. Identify key trends, methodologies, datasets, and research gaps."""
 
@@ -151,6 +166,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
             state=AgentState.COMPLETED,
             data={
                 "num_papers_found": len(valid_papers),
+                "num_references": len(references),
                 "num_related_from_memory": len(related_papers),
                 "summary": data.get("summary", ""),
                 "gaps_identified": data.get("gaps", []),
@@ -158,94 +174,114 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
         )
         return self.output
 
+    @staticmethod
+    def _keywords(query: str, n: int = 6) -> list[str]:
+        """Most useful query terms: long research topics make strict AND searches return nothing."""
+        words = [w for w in re.findall(r"[\w\-]+", query.lower()) if w not in _QUERY_STOPWORDS and len(w) > 1]
+        seen = list(dict.fromkeys(words))
+        return sorted(seen, key=lambda w: -len(w))[:n] if len(seen) > n else seen
+
+    @staticmethod
+    async def _get(url: str, headers: dict | None = None, retries: int = 1) -> bytes:
+        """GET with one retry on rate limiting. Uses httpx (certifi CA bundle), not urllib: some Python
+        installs (e.g. python.org builds on macOS) ship without root certificates."""
+        import httpx
+
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True,
+                                     headers={"User-Agent": "KiwisResearch/1.0", **(headers or {})}) as client:
+            for attempt in range(retries + 1):
+                resp = await client.get(url)
+                if resp.status_code == 429 and attempt < retries:
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+                resp.raise_for_status()
+                return resp.content
+        raise RuntimeError("unreachable")
+
     async def _search_arxiv(self, query: str, max_results: int = 10) -> list[dict]:
-        """Search arXiv API."""
-        import urllib.request
-        import xml.etree.ElementTree as ET
-        
-        base_url = "http://export.arxiv.org/api/query"
-        search_query = f'all:{query.replace(" ", "+")}'
-        
+        """Search the arXiv API. A strict AND of all terms often finds almost nothing for long topics, so
+        the query is relaxed (fewer terms) until enough papers are found."""
+        terms = self._keywords(query)
+        if not terms:
+            return []
         try:
-            url = f"{base_url}?search_query={search_query}&start=0&max_results={max_results}"
-            with urllib.request.urlopen(url, timeout=30) as response:
-                xml_data = response.read().decode("utf-8")
-            
-            root = ET.fromstring(xml_data)
-            ns = {"atom": "http://www.w3.org/2005/Atom", "opensearch": "http://a9.com/-/spec/opensearch/1.1/"}
-            
-            total = root.find("opensearch:totalResults", ns)
-            papers = []
-            
-            for entry in root.findall("atom:entry", ns):
-                title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
-                summary = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
-                authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns)]
-                
-                published = entry.find("atom:published", ns)
-                year = int(published.text[:4]) if published is not None else 2024
-                
-                id_elem = entry.find("atom:id", ns)
-                arxiv_id = id_elem.text.split("/abs/")[-1] if id_elem is not None else ""
-                
-                papers.append({
-                    "source": "arxiv",
-                    "id": f"arxiv:{arxiv_id}",
-                    "title": title,
-                    "authors": authors[:5],
-                    "year": year,
-                    "summary": summary[:1000],
-                    "relevance_score": 0.9,
-                })
-            
+            papers: list[dict] = []
+            for n in dict.fromkeys([len(terms), 4, 3, 2]):
+                if n > len(terms):
+                    continue
+                search = "+AND+".join(f"all:{urllib.parse.quote_plus(t)}" for t in terms[:n])
+                url = (f"https://export.arxiv.org/api/query?search_query={search}"
+                       f"&start=0&max_results={max_results}&sortBy=relevance")
+                papers = self._parse_arxiv((await self._get(url)).decode("utf-8"))
+                if len(papers) >= min(5, max_results):
+                    break
             return papers
         except Exception as e:
-            return [{"error": f"arXiv search failed: {str(e)}"}]
+            return [{"error": f"arXiv search failed: {e}"}]
+
+    @staticmethod
+    def _parse_arxiv(xml_data: str) -> list[dict]:
+        root = ET.fromstring(xml_data)
+        ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+        papers = []
+        for entry in root.findall("atom:entry", ns):
+            def text(tag):
+                el = entry.find(tag, ns)
+                return re.sub(r"\s+", " ", el.text).strip() if el is not None and el.text else ""
+
+            arxiv_id = re.sub(r"v\d+$", "", text("atom:id").split("/abs/")[-1])
+            published = text("atom:published")
+            papers.append({
+                "source": "arxiv",
+                "id": f"arxiv:{arxiv_id}",
+                "title": text("atom:title"),
+                "authors": [a.findtext("atom:name", default="", namespaces=ns) for a in entry.findall("atom:author", ns)],
+                "year": int(published[:4]) if published[:4].isdigit() else None,
+                "summary": text("atom:summary")[:1000],
+                "url": f"https://arxiv.org/abs/{arxiv_id}",
+                "doi": text("arxiv:doi"),
+                "venue": "arXiv preprint",
+                "relevance_score": 0.9,
+            })
+        return papers
 
     async def _search_semantic_scholar(self, query: str, max_results: int = 10) -> list[dict]:
-        """Search Semantic Scholar API."""
-        import urllib.request
-        import json as json_mod
-        
+        """Search Semantic Scholar (set SEMANTIC_SCHOLAR_API_KEY for higher rate limits)."""
+        terms = self._keywords(query)
+        if not terms:
+            return []
+        fields = "paperId,title,authors,year,abstract,venue,citationCount,referenceCount,externalIds,url"
+        url = (f"https://api.semanticscholar.org/graph/v1/paper/search?query={urllib.parse.quote_plus(' '.join(terms))}"
+               f"&limit={max_results}&fields={fields}")
+        key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
         try:
-            url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query.replace(' ', '+')}&limit={max_results}&fields=title,authors,year,abstract,venue,publicationDates,referencesCount,citationCount"
-            
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", "KiwisResearch/1.0")
-            
-            with urllib.request.urlopen(req, timeout=30) as response:
-                data = json_mod.loads(response.read().decode())
-            
+            data = json.loads(await self._get(url, {"x-api-key": key} if key else None))
             papers = []
             for p in data.get("data", []):
-                authors_list = [a.get("name", "?") for a in (p.get("authors") or [])[:5]]
+                ext = p.get("externalIds") or {}
                 papers.append({
                     "source": "semantic_scholar",
                     "id": f"s2:{p.get('paperId', 'unknown')}",
-                    "title": p.get("title", "Unknown"),
-                    "authors": authors_list,
-                    "year": p.get("year") or 2024,
+                    "title": p.get("title") or "",
+                    "authors": [a.get("name", "?") for a in (p.get("authors") or [])[:8]],
+                    "year": p.get("year"),
                     "abstract": (p.get("abstract") or "")[:1000],
-                    "venue": p.get("venue", "Unknown"),
+                    "venue": p.get("venue") or "",
+                    "url": p.get("url") or "",
+                    "doi": ext.get("DOI", ""),
                     "citation_count": p.get("citationCount", 0),
                     "reference_count": p.get("referenceCount", 0),
                     "relevance_score": 0.85,
                 })
-            
             return papers
         except Exception as e:
-            return [{"error": f"Semantic Scholar search failed: {str(e)}"}]
+            return [{"error": f"Semantic Scholar search failed: {e}"}]
 
-    def _format_paper_list(self, papers: list[dict]) -> str:
-        lines = []
-        for i, p in enumerate(papers[:15]):
-            if "error" in p:
-                lines.append(f"[{i+1}] Error: {p['error']}")
-            else:
-                title = p.get("title", "Unknown")
-                authors = ", ".join(p.get("authors", [])[:3])
-                year = p.get("year", "?")
-                venue = p.get("venue", "") or p.get("source", "")
-                summary = (p.get("summary") or p.get("abstract") or "")[:200]
-                lines.append(f"[{i+1}] [{p.get('id', '?')}] {title}\n    Authors: {authors} ({year})\n    Venue: {venue}\n    Abstract: {summary}...")
-        return "\n".join(lines) if lines else "No papers found."
+    @staticmethod
+    def _format_reference_list(references: list[dict], found: list[dict]) -> str:
+        lines = [f"(search problem: {p['error']})" for p in found if "error" in p]
+        for r in references:
+            authors = ", ".join(r["authors"][:3]) + (" et al." if len(r["authors"]) > 3 else "")
+            lines.append(f"[{r['key']}] {r['title']} - {authors} ({r['year'] or 'n.d.'}){' - ' + r['venue'] if r['venue'] else ''}\n"
+                         f"    Abstract: {r['abstract'][:300]}{'...' if len(r['abstract']) > 300 else ''}")
+        return "\n".join(lines) if references else "No papers could be retrieved; do not invent any.\n" + "\n".join(lines)

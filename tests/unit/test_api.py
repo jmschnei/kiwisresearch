@@ -185,6 +185,17 @@ def test_config_endpoint_reports_availability_without_secrets(tmp_path, monkeypa
         assert "sk-secret-value" not in r.text
 
 
+def test_config_never_exposes_the_vector_store_url(tmp_path):
+    from kiwis.config.settings import Settings
+    settings = Settings(memory={"vector_store": "pgvector", "url": "postgresql://user:hunter2@db/kiwis"})
+    app = create_app(settings=settings, pipeline_builder=lambda *a: None, jobs_dir=tmp_path / "jobs")
+    with TestClient(app) as c:
+        r = c.get("/api/v1/config")
+        assert "hunter2" not in r.text and "postgresql://" not in r.text
+        memory = r.json()["data"]["memory"]
+        assert memory["vector_store"] == "pgvector" and memory["urlConfigured"] is True
+
+
 # ---------------------------------------------------------------- persistence
 
 def test_jobs_survive_server_restart(tmp_path):
@@ -305,7 +316,11 @@ class ReviewLoopAgent(FakeAgent):
         if self.role == "writer":
             v = state.revision_round + 1
             (self.out_dir / "paper.pdf").write_bytes(b"%PDF-1.4 fake")
-            state.paper_draft = {"content": {"title": f"Paper v{v}", "sections": {"abstract": f"abs v{v}"},
+            state.references = [{"key": "smith2020graph", "title": "A Real Paper", "authors": ["Jane Smith"], "year": 2020,
+                                 "venue": "arXiv preprint", "url": "https://arxiv.org/abs/2001.00001", "doi": "", "abstract": "",
+                                 "id": "arxiv:2001.00001", "source": "arxiv"}]
+            state.paper_draft = {"citation_report": {"total": 1, "cited": ["smith2020graph"], "unknown": [], "uncited": []},
+                                 "content": {"title": f"Paper v{v}", "sections": {"abstract": f"abs v{v}"},
                                              "revision_notes": [{"issue": "baselines", "response": "added"}] if v > 1 else []}}
             state.paper_history.append({"version": v, "title": f"Paper v{v}", "latex": f"paper_v{v}.tex",
                                         "json": f"paper_draft_v{v}.json", "revisionNotes": []})
@@ -339,6 +354,7 @@ def test_review_loop_runs_through_the_api(tmp_path):
         paper = c.get(f"/api/v1/results/{pid}/paper").json()["data"]
         assert paper["title"] == "Paper v2" and paper["revisionNotes"][0]["response"] == "added"
         assert [v["version"] for v in paper["versions"]] == [1, 2]
+        assert paper["references"][0]["key"] == "smith2020graph" and paper["citationReport"]["cited"] == ["smith2020graph"]
 
         steps = c.get(f"/api/v1/pipelines/{pid}/steps").json()["data"]
         assert steps[6]["status"] == "done" and "aceptado" in steps[6]["justification"]

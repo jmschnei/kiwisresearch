@@ -193,6 +193,38 @@ export ANTHROPIC_API_KEY="sk-ant-..." # For Claude (reviewer agent)
 export DEEPSEEK_API_KEY="sk-..."      # Optional, for DeepSeek fallback
 ```
 
+Optional:
+
+```bash
+export SEMANTIC_SCHOLAR_API_KEY="..."  # Semantic Scholar rate-limits anonymous clients (HTTP 429)
+export KIWIS_VECTOR_URL="..."          # Qdrant server URL or PostgreSQL DSN (pgvector); keeps credentials out of YAML
+export QDRANT_API_KEY="..."            # For a protected Qdrant server
+```
+
+## Literature Memory (vector store)
+
+Retrieved papers are indexed so later research runs can recall related work. Choose the backend with `memory.vector_store`:
+
+| Backend | Setup |
+|---------|-------|
+| `chroma` (default) | Embedded, data in `memory.persist_dir`. Uses Chroma's built-in embedder unless OpenAI is available. |
+| `qdrant` | Embedded (`<persist_dir>/qdrant`) or a server via `memory.url` / `KIWIS_VECTOR_URL`. |
+| `pgvector` | PostgreSQL with the `vector` extension: `pip install -e ".[pgvector]"` and `KIWIS_VECTOR_URL=postgresql://user:pass@host/db`. |
+
+Embeddings come from OpenAI when `OPENAI_API_KEY` is set. Without it, Qdrant/pgvector fall back to a built-in
+hashed bag-of-words embedder (offline, lexical matching only), and Chroma to its default embedder. Collections are
+named `<collection>_<embedder>` so vectors from different embedders are never mixed. All backends are covered by the same
+contract tests (`tests/unit/test_vector_backends.py`; set `KIWIS_TEST_PG_DSN` to include pgvector).
+
+## References
+
+The paper's bibliography is built **only from papers the Librarian actually retrieved** (arXiv, Semantic Scholar, and
+earlier runs recalled from the vector store). The writer is given the list with stable citation keys and may only
+`\cite{key}` them; any invented key is removed automatically, and the bibliography and `references.bib` are rendered
+from the retrieved metadata. The results page shows which references were cited and which invented citations were
+dropped. This guarantees the references exist; it does not verify that a cited paper supports the sentence citing it
+(the reviewer is told which works were cited and asked to judge plausibility).
+
 ## Design Decisions
 
 1. **Agent Swarm Pattern**: Agents communicate via a shared state bus (`AgentSwarm`), enabling decoupled collaboration without tight coupling.

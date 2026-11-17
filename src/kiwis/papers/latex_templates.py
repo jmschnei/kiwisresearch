@@ -21,7 +21,7 @@ class ConferenceFormat:
             "\\usepackage[utf8]{inputenc}\n"
             "\\usepackage[T1]{fontenc}\n"
             "\\usepackage{hyperref}\n"
-            "\\usepackage{natbib}\n"
+            "\\usepackage[numbers]{natbib}\n"
             "\\usepackage{amsmath,amssymb,bm}\n"
             "\\usepackage{algorithm,algpseudocode,float,booktabs,multirow}\n"
             "\\usepackage{graphicx,geometry,caption,subcaption,fancyhdr,xcolor}\n"

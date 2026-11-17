@@ -86,8 +86,12 @@ paths:
 
 # ---- Memory/Vector Store ----
 memory:
+  enabled: true
   vector_store: "chroma"                   # chroma | qdrant | pgvector
-  persist_dir: "./chroma_kiwis/"
+  persist_dir: "./chroma_kiwis/"           # chroma data; embedded qdrant uses <persist_dir>/qdrant
+  collection: "kiwis_papers"               # an embedder tag is appended, e.g. kiwis_papers_openai
+  # url: "http://localhost:6333"           # qdrant server (omit for embedded) / pgvector DSN. Prefer the
+  #                                        # KIWIS_VECTOR_URL env var so credentials stay out of this file.
 
 # ---- Logging ----
 logging:

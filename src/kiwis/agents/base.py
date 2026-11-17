@@ -51,6 +51,7 @@ class AgentContext:
     analysis: dict = field(default_factory=dict)
     paper_draft: dict = field(default_factory=dict)
     review_feedback: list[dict] = field(default_factory=list)
+    references: list[dict] = field(default_factory=list)  # real references retrieved by the Librarian
     revision_round: int = 0  # 0 = first draft; n = n-th revision after peer review
     paper_history: list[dict] = field(default_factory=list)  # one entry per paper version
     artifacts: dict[str, str] = field(default_factory=dict)  # name -> path

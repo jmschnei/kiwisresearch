@@ -52,9 +52,10 @@ class LoggingConfig(BaseModel):
 class MemoryConfig(BaseModel):
     """Vector store settings."""
     enabled: bool = Field(default=True)
-    vector_store: str = Field(default="chroma")  # only "chroma" is implemented
-    persist_dir: str = Field(default="./chroma_kiwis")
-    collection: str = Field(default="kiwis_papers")
+    vector_store: str = Field(default="chroma")  # chroma | qdrant | pgvector
+    persist_dir: str = Field(default="./chroma_kiwis")  # chroma data; qdrant local mode uses <persist_dir>/qdrant
+    collection: str = Field(default="kiwis_papers")  # an embedder tag is appended (e.g. kiwis_papers_openai)
+    url: Optional[str] = Field(default=None)  # qdrant server URL or pgvector DSN (or env KIWIS_VECTOR_URL)
 
 
 class Settings(BaseModel):

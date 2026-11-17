@@ -128,6 +128,8 @@ def paper_view(manager: JobManager, job: Job) -> dict | None:
         "reviewConsensus": review["consensus"],
         "artifacts": manager.list_artifacts(job),
         "versions": job.state.paper_history,
+        "references": job.state.references,
+        "citationReport": job.state.paper_draft.get("citation_report"),
         "revisionNotes": content.get("revision_notes", []),
     }
 
@@ -178,6 +180,7 @@ def config_view(settings) -> dict:
         "agents": agents,
         "providers": providers,
         "sandbox": settings.sandbox.model_dump(),
-        "memory": settings.memory.model_dump(),
+        # `url` may embed credentials (a PostgreSQL DSN): report only whether one is set
+        "memory": {**settings.memory.model_dump(exclude={"url"}), "urlConfigured": bool(settings.memory.url)},
         "pipeline": settings.pipeline.model_dump(),
     }

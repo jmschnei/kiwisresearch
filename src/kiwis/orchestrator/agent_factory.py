@@ -26,24 +26,25 @@ class AgentFactory:
         self._vector_store = None
         self._vector_store_built = False
 
+    _BACKEND_MODULES = {"chroma": "chromadb", "qdrant": "qdrant_client", "pgvector": "asyncpg"}
+
     def vector_store(self):
         """Shared vector store (None if disabled or unavailable). Initialized lazily by its users."""
         if not self._vector_store_built:
             self._vector_store_built = True
             mem = self._settings.memory
-            if mem.enabled and mem.vector_store == "chroma":
+            if mem.enabled:
                 try:
-                    import chromadb  # noqa: F401
-                    from ..memory.vector_store import ChromaStore
-                    self._vector_store = ChromaStore(
-                        persist_dir=mem.persist_dir,
-                        collection_name=mem.collection,
-                        embed_fn=self._embed_fn(),
-                    )
+                    from importlib.util import find_spec
+                    from ..memory.factory import create_vector_store
+
+                    module = self._BACKEND_MODULES.get(mem.vector_store.lower())
+                    if module and find_spec(module) is None:
+                        raise ImportError(f"'{module}' is not installed (needed for the {mem.vector_store} backend)")
+                    embed_fn = self._embed_fn()
+                    self._vector_store = create_vector_store(mem, embed_fn, "openai" if embed_fn else None)
                 except Exception as e:
                     logger.warning(f"Vector store unavailable ({e}); literature will not be indexed")
-            elif mem.enabled:
-                logger.warning(f"Vector store '{mem.vector_store}' is not implemented; indexing disabled")
         return self._vector_store
 
     def _embed_fn(self):

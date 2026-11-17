@@ -171,11 +171,14 @@ class ChromaStore(VectorStore):
         )
 
     async def delete_documents(self, doc_ids: list[str]) -> int:
+        """Delete documents; returns how many actually existed."""
         coll = self._require()
         if not doc_ids:
             return 0
-        await asyncio.to_thread(lambda: coll.delete(ids=doc_ids))
-        return len(doc_ids)
+        existing = await asyncio.to_thread(lambda: coll.get(ids=doc_ids)["ids"])
+        if existing:
+            await asyncio.to_thread(lambda: coll.delete(ids=existing))
+        return len(existing)
 
     async def close(self) -> None:
         self._collection = None

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # (settings, tracker, output_dir) -> ResearchPipeline. Replaceable for tests.
 PipelineBuilder = Callable[[Settings, UsageTracker, Path], ResearchPipeline]
 
-ARTIFACT_SUFFIXES = {".pdf", ".png", ".svg", ".csv", ".json", ".md", ".tex", ".py"}
+ARTIFACT_SUFFIXES = {".pdf", ".png", ".svg", ".csv", ".json", ".md", ".tex", ".py", ".bib"}
 
 
 def default_pipeline_builder(settings: Settings, tracker: UsageTracker, output_dir: Path) -> ResearchPipeline:

@@ -139,6 +139,7 @@ Analysis & Conclusions:
 {json.dumps(analysis.get("conclusions", []), indent=2, default=str)[:1000]}
 
 Provide a thorough, rigorous review covering ALL criteria. Be specific about what needs to be fixed."""
+        prompt += self._citation_note(context)
         prompt += self._previous_round_note(context)
 
         if self._llm:
@@ -179,6 +180,23 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
             },
         )
         return self.output
+
+    @staticmethod
+    def _citation_note(context: AgentContext) -> str:
+        """Facts about the paper's references, computed by the system (not by the writer)."""
+        report = (context.paper_draft or {}).get("citation_report")
+        if report is None:
+            return ""
+        titles = {r["key"]: r["title"] for r in getattr(context, "references", [])}
+        cited = "; ".join(f"{k} = {titles.get(k, '?')}" for k in report.get("cited", [])[:25]) or "none"
+        return f"""
+
+=== REFERENCE CHECK (computed by the system) ===
+References retrieved from scholarly indexes: {report.get("total", 0)}. Cited in the paper: {len(report.get("cited", []))}.
+Invented citation keys removed automatically: {len(report.get("unknown", []))}.
+Cited works: {cited}
+Judge whether the related work is adequately covered and whether claims attributed to references are plausible for
+those titles; flag claims without support. A paper with no or very few references has a literature problem."""
 
     @staticmethod
     def _previous_round_note(context: AgentContext) -> str:

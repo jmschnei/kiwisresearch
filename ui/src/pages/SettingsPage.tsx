@@ -96,7 +96,7 @@ export function SettingsPage() {
             <Section title="Entorno de ejecución">
               <Row label="Sandbox">{cfg.sandbox.mode}</Row>
               <Row label="Timeout">{cfg.sandbox.timeout_seconds}s</Row>
-              <Row label="Memoria vectorial">{cfg.memory.enabled ? `${cfg.memory.vector_store} (${cfg.memory.persist_dir})` : 'desactivada'}</Row>
+              <Row label="Memoria vectorial">{cfg.memory.enabled ? `${cfg.memory.vector_store} (${cfg.memory.urlConfigured ? 'servidor configurado' : cfg.memory.persist_dir})` : 'desactivada'}</Row>
             </Section>
           </>
         )}

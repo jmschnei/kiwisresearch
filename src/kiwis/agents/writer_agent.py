@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from ..papers.references import bibliography_items, bibtex_file, check_citations
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 
 
@@ -42,7 +43,10 @@ Writing standards:
 - Generate properly formatted tables (LaTeX tabular)
 - Figure captions describe findings, not just the plot
 
-Citation format: Use numeric references [1], [2], etc. with a bibliography at the end.
+Citations: cite ONLY the references provided in the prompt, using \\cite{key} with the exact key (several: \\cite{a,b}).
+Never invent references, authors or results, and do not write a bibliography: it is generated automatically from the
+cited keys. Claims you cannot support with a provided reference or with the experiment results must be stated as
+hypotheses or limitations.
 
 Respond in this structure:
 ```json
@@ -58,9 +62,6 @@ Respond in this structure:
     "analysis": "...",
     "conclusion": "..."
   },
-  "bibliography_entries": [
-    {"key": "author_year", "text": "Full citation in conference format"}
-  ],
   "tables": [
     {"caption": "...", "content": "LaTeX tabular code"}
   ],
@@ -115,7 +116,9 @@ Analysis and Conclusions:
 {json.dumps(context.analysis.get("conclusions", []), indent=2, default=str)[:1000]}
 
 Generate a complete paper with all sections, properly formatted in LaTeX-compatible JSON structure.
-Ensure the narrative is coherent and compelling."""
+Ensure the narrative is coherent and compelling.
+
+{self._references_block(context.references)}"""
 
         revising = self._is_revision(context)
         system_prompt = self.SYSTEM_PROMPT
@@ -147,6 +150,11 @@ Ensure the narrative is coherent and compelling."""
         elif not paper_data:
             paper_data = {"title": "Untitled", "abstract": "", "sections": {}, "tables": [], "figures": []}
 
+        # Only real references may be cited: drop invented keys, keep a report
+        paper_data.pop("bibliography_entries", None)  # never trust an LLM-written bibliography
+        paper_data, citation_report = check_citations(paper_data, context.references)
+        paper_data["citation_report"] = citation_report
+
         # Generate LaTeX document
         latex_content = self._generate_latex(paper_data, context)
         
@@ -171,7 +179,11 @@ Ensure the narrative is coherent and compelling."""
                         "revisionNotes": paper_data.get("revision_notes", [])})
         context.paper_history = history
 
+        if context.references:
+            (output_dir / "references.bib").write_text(bibtex_file(context.references))
+
         context.paper_draft.update({
+            "citation_report": citation_report,
             "latex_path": str(paper_path),
             "json_path": str(json_path),
             "content": paper_data,
@@ -184,11 +196,14 @@ Ensure the narrative is coherent and compelling."""
         try:
             from ..execution.sandbox import ExecutionResult
             import subprocess
-            result = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", paper_path.name],
-                cwd=str(paper_path.parent),
-                capture_output=True, text=True, timeout=120,
-            )
+            for _ in range(2):  # second pass resolves \cite references against the bibliography
+                result = subprocess.run(
+                    ["pdflatex", "-interaction=nonstopmode", paper_path.name],
+                    cwd=str(paper_path.parent),
+                    capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode != 0:
+                    break
             if result.returncode == 0:
                 pdf_path = paper_path.with_suffix(".pdf")
                 latex_compiled = True
@@ -205,12 +220,26 @@ Ensure the narrative is coherent and compelling."""
                 "sections_written": list(paper_data.get("sections", {}).keys()),
                 "num_tables": len(paper_data.get("tables", [])),
                 "version": version,
+                "citations": {"cited": len(citation_report["cited"]), "unknown_removed": len(citation_report["unknown"]),
+                              "available": citation_report["total"]},
                 "revision": revising,
                 "latex_compiled": latex_compiled,
                 "pdf_available": latex_compiled,
             },
         )
         return self.output
+
+    @staticmethod
+    def _references_block(references: list[dict]) -> str:
+        if not references:
+            return ("AVAILABLE REFERENCES: none were retrieved. Do not cite any literature and do not invent references; "
+                    "say explicitly that the related-work coverage is limited.")
+        lines = []
+        for r in references:
+            authors = ", ".join(r["authors"][:3]) + (" et al." if len(r["authors"]) > 3 else "")
+            lines.append(f"- {r['key']}: {authors} ({r['year'] or 'n.d.'}). {r['title']}. "
+                         f"{r['abstract'][:220]}{'...' if len(r['abstract']) > 220 else ''}")
+        return "AVAILABLE REFERENCES (cite ONLY these, as \\cite{key}):\n" + "\n".join(lines)
 
     @staticmethod
     def _is_revision(context: AgentContext) -> bool:
@@ -244,16 +273,15 @@ Rewrite the complete paper addressing this review, and include "revision_notes".
         
         sections = paper_data.get("sections", {})
         tables = paper_data.get("tables", [])
-        bibliography = paper_data.get("bibliography_entries", [])
         
-        # Build bibliography (thebibliography items)
-        bib_entries = "\n".join(
-            f"\\bibitem{{{entry.get('key', f'ref{i+1}')}}} {entry.get('text', '')}"
-            for i, entry in enumerate(bibliography[:30])
-        )
+        # Bibliography: only references that are actually cited, rendered from the retrieved metadata
+        report = paper_data.get("citation_report") or {}
+        bib_items = bibliography_items(context.references, report.get("cited", []))
+        bib_entries = "\n".join(bib_items)
         title = paper_data.get("title", "Untitled")
         abstract = sections.get("abstract", paper_data.get("abstract", ""))
-        bib_block = bib_entries or "\\bibitem{none} No bibliography entries provided."
+        bib_block = (f"\\begin{{thebibliography}}{{99}}\n{bib_entries}\n\\end{{thebibliography}}\n\n"
+                     if bib_entries else "")
 
         def sec(name: str, key: str) -> str:
             return f"\\section{{{name}}}\n{sections.get(key, '')}\n"
@@ -271,7 +299,8 @@ Rewrite the complete paper addressing this review, and include "revision_notes".
             "\\documentclass[10pt,letterpaper]{article}\n"
             "\\usepackage[utf8]{inputenc}\n"
             "\\usepackage[T1]{fontenc}\n"
-            "\\usepackage{hyperref,natbib,amsmath,amssymb,bm}\n"
+            "\\usepackage[numbers]{natbib}\n"
+            "\\usepackage{hyperref,amsmath,amssymb,bm}\n"
             "\\usepackage{algorithm,algpseudocode,float,booktabs,multirow}\n"
             "\\usepackage{graphicx,geometry,caption,subcaption,fancyhdr,xcolor}\n"
             "\\geometry{margin=1in}\n"
@@ -286,7 +315,7 @@ Rewrite the complete paper addressing this review, and include "revision_notes".
             "\\begin{document}\n\\maketitle\n\n"
             f"\\begin{{abstract}}\n{abstract}\n\\end{{abstract}}\n\n"
             f"{body}\n"
-            f"\\begin{{thebibliography}}{{99}}\n{bib_block}\n\\end{{thebibliography}}\n\n"
+            f"{bib_block}"
             "\\end{document}\n"
         )
         return tex_content

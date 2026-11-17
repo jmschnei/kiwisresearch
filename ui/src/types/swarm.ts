@@ -70,7 +70,7 @@ export interface ResearchStep {
 
 export interface Artifact {
   id: string;
-  type: 'pdf' | 'png' | 'svg' | 'csv' | 'json' | 'md' | 'tex' | 'py';
+  type: 'pdf' | 'png' | 'svg' | 'csv' | 'json' | 'md' | 'tex' | 'py' | 'bib';
   name: string;
   size: string;
   thumbnail?: string;
@@ -107,6 +107,8 @@ export interface PaperResult {
   reviewConsensus: ReviewConsensus;
   artifacts: Artifact[];
   versions: PaperVersion[];
+  references: Reference[];
+  citationReport: CitationReport | null;
   revisionNotes: { issue: string; response: string }[];
 }
 
@@ -139,7 +141,7 @@ export interface BackendConfig {
     models: string[]; available: boolean; apiKeyEnvVar: string | null;
   }>;
   sandbox: { mode: string; timeout_seconds: number; memory_mb: number; network_isolated: boolean };
-  memory: { enabled: boolean; vector_store: string; persist_dir: string };
+  memory: { enabled: boolean; vector_store: string; persist_dir: string; collection: string; urlConfigured: boolean };
   pipeline: Record<string, number | null>;
 }
 
@@ -159,6 +161,26 @@ export interface ReviewScores {
   consensus: ReviewConsensus;
   rounds: ReviewRound[];
   revisionRound: number;
+}
+
+export interface Reference {
+  key: string;
+  id: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  venue: string;
+  url: string;
+  doi: string;
+  abstract: string;
+  source: string;
+}
+
+export interface CitationReport {
+  total: number;
+  cited: string[];
+  unknown: string[];
+  uncited: string[];
 }
 
 export interface PaperVersion {

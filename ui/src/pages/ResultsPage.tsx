@@ -16,7 +16,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'review', label: '🏆 Revisión' },
   { key: 'artifacts', label: '📦 Artefactos' },
 ];
-const TEXT_TYPES = ['json', 'py', 'tex', 'md', 'csv'];
+const TEXT_TYPES = ['json', 'py', 'tex', 'md', 'csv', 'bib'];
 
 /** The full pipeline state, saved by the backend as `state.json`. */
 function useResearchState(id: string | undefined, enabled: boolean) {
@@ -38,6 +38,9 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 const Pre = ({ children }: { children: React.ReactNode }) => (
   <pre className="terminal-font text-[11px] bg-dark-primary/60 rounded-lg p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap border border-dark-primary/40 max-h-80">{children}</pre>
 );
+
+/** Show LaTeX citations as plain `[key]` markers in the page. */
+const humanizeCites = (t: string) => t.replace(/\\cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]*)\}/g, (_m, keys: string) => `[${keys.replace(/\s*,\s*/g, ', ')}]`);
 
 const pretty = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const isEmpty = (v: unknown) => v == null || v === '' || (typeof v === 'object' && Object.keys(v as object).length === 0);
@@ -117,7 +120,7 @@ export function ResultsPage() {
             {p && (
               <>
                 <Section title="Resumen (abstract)">
-                  <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{p.abstract || 'El agente redactor no generó un resumen.'}</p>
+                  <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{p.abstract ? humanizeCites(p.abstract) : 'El agente redactor no generó un resumen.'}</p>
                   <div className="text-[11px] text-gray-500 mt-3">Autores: {p.authors.join(', ')}</div>
                 </Section>
                 {p.revisionNotes.length > 0 && (
@@ -132,6 +135,40 @@ export function ResultsPage() {
                     </ul>
                   </Section>
                 )}
+                <Section title={`Bibliografía — ${p.citationReport?.cited.length ?? 0} citadas de ${p.references.length} recuperadas`}>
+                  {p.references.length === 0 ? (
+                    <p className="text-sm text-gray-400">
+                      No se recuperó ninguna referencia (sin acceso a arXiv / Semantic Scholar), así que el artículo no cita bibliografía.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-[12px] text-gray-500 mb-3">
+                        Las referencias proceden de las búsquedas reales en arXiv y Semantic Scholar; el redactor solo puede citar estas claves.
+                        {p.citationReport && p.citationReport.unknown.length > 0 && (
+                          <span className="text-cyber-yellow"> Se eliminaron {p.citationReport.unknown.length} cita(s) inventadas ({p.citationReport.unknown.join(', ')}).</span>
+                        )}
+                      </p>
+                      <ul className="space-y-2">
+                        {p.references.map((r) => {
+                          const cited = p.citationReport?.cited.includes(r.key);
+                          return (
+                            <li key={r.key} className={`text-[12px] flex gap-3 ${cited ? 'text-gray-300' : 'text-gray-600'}`}>
+                              <span className="terminal-font text-[10px] shrink-0 mt-0.5 px-1.5 py-0.5 rounded bg-dark-hover text-gray-400">{r.key}</span>
+                              <span className="min-w-0">
+                                {r.authors.slice(0, 3).join(', ')}{r.authors.length > 3 && ' et al.'} ({r.year ?? 's. f.'}). <em>{r.title}</em>
+                                {r.venue && `. ${r.venue}`}
+                                {(r.url || r.doi) && (
+                                  <a href={r.doi ? `https://doi.org/${r.doi}` : r.url} target="_blank" rel="noreferrer" className="text-cyber-blue hover:underline ml-2">enlace ↗</a>
+                                )}
+                                {!cited && <span className="ml-2 text-[10px] text-gray-600">(no citada)</span>}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+                </Section>
                 <Section title="Documento">
                   {p.pdfUrl ? (
                     <>

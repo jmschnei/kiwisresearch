@@ -77,6 +77,7 @@ dev = [
     "mypy>=1.10.0",
     "pre-commit>=3.7.0",
 ]
+pgvector = ["asyncpg>=0.29.0"]
 api = ["fastapi>=0.110.0", "uvicorn[standard]>=0.29.0"]
 sandbox-docker = ["docker>=7.0.0"]
 sandbox-sqlite = ["aiosqlite>=0.19.0", "sqlalchemy>=2.0.0"]
