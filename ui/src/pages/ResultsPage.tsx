@@ -148,6 +148,28 @@ export function ResultsPage() {
                           <span className="text-cyber-yellow"> Se eliminaron {p.citationReport.unknown.length} cita(s) inventadas ({p.citationReport.unknown.join(', ')}).</span>
                         )}
                       </p>
+                      {p.citationReport && p.citationReport.repaired ? (
+                        <p className="text-[12px] text-gray-500 mb-3">{p.citationReport.repaired} frase(s) se reescribieron tras eliminar una cita inventada.</p>
+                      ) : null}
+                      {p.citationReport?.verification && p.citationReport.verification.checked > 0 && (
+                        <div className="mb-4 rounded-lg border border-dark-primary/40 p-3">
+                          <p className="text-[12px] text-gray-400 mb-2">
+                            Comprobación de afirmaciones (un LLM lee el resumen de cada referencia, no el texto completo):{' '}
+                            <span className="text-cyber-green">{p.citationReport.verification.supported} respaldadas</span>,{' '}
+                            <span className="text-cyber-yellow">{p.citationReport.verification.partial} parciales</span>,{' '}
+                            <span className="text-cyber-red">{p.citationReport.verification.unsupported} sin respaldo</span>,{' '}
+                            {p.citationReport.verification.unverifiable} no verificables.
+                          </p>
+                          <ul className="space-y-1.5">
+                            {p.citationReport.verification.items.filter((it) => it.verdict === 'unsupported' || it.verdict === 'partial').map((it, i) => (
+                              <li key={i} className="text-[12px] text-gray-300">
+                                <span className={it.verdict === 'unsupported' ? 'text-cyber-red' : 'text-cyber-yellow'}>[{it.verdict === 'unsupported' ? 'sin respaldo' : 'parcial'}]</span>{' '}
+                                “{it.sentence}” <span className="terminal-font text-[10px] text-gray-500">{it.key}</span> — {it.reason}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       <ul className="space-y-2">
                         {p.references.map((r) => {
                           const cited = p.citationReport?.cited.includes(r.key);

@@ -280,3 +280,106 @@ def test_generated_latex_compiles_with_resolved_citations(tmp_path):
     assert out.data["latex_compiled"], log[-800:]
     assert "undefined" not in log.lower().replace("undefined control sequence", "")  # citations resolved on pass 2
     assert not [l for l in log.splitlines() if l.startswith("!")]
+
+
+# ------------------------------------------------------------------ repairing and verifying citations
+
+class ScriptedLLM(CaptureLLM):
+    """Answers each call from a list of responses, in order."""
+    def __init__(self, *responses):
+        super().__init__(responses[0])
+        self._responses, self._n = list(responses), 0
+
+    async def chat(self, messages, config):
+        self.prompts.append(messages)
+        text = self._responses[min(self._n, len(self._responses) - 1)]
+        self._n += 1
+        from kiwis.models.base import ChatMessage
+        return ChatMessage(role="assistant", content=text)
+
+
+def test_check_citations_records_sentences_that_lost_a_citation():
+    from kiwis.papers.references import apply_repairs
+    refs = build_references([SMITH])
+    paper = {"abstract": "Fine.", "sections": {"introduction": r"Good \cite{smith2020graph}. And the unverifiable \cite{ghost1}. End."}}
+    fixed, report = check_citations(paper, refs)
+    assert report["repairs"] == [{"section": "introduction", "cleaned": "And the unverifiable.", "removed": ["ghost1"]}]
+
+    assert apply_repairs(fixed, {0: "We make no claim here."}, report["repairs"], refs) == 1
+    assert fixed["sections"]["introduction"] == r"Good \cite{smith2020graph}. We make no claim here. End."
+    # unsafe rewrites are refused: new invented citation, empty text, unknown index, sentence not found
+    assert apply_repairs(fixed, {0: r"Sure \cite{nope1}"}, report["repairs"], refs) == 0
+    assert apply_repairs(fixed, {0: "", 5: "x"}, report["repairs"], refs) == 0
+
+
+def test_writer_rewrites_cut_off_sentences(tmp_path):
+    refs = build_references([SMITH])
+    paper = json.dumps({"title": "T", "sections": {"introduction": r"Good \cite{smith2020graph}. And the unverifiable \cite{ghost1}."}})
+    llm = ScriptedLLM("```json\n" + paper + "\n```", '```json\n{"0": "We do not rely on prior claims here."}\n```')
+    state, _ = write(llm, refs, tmp_path)
+    assert state.paper_draft["content"]["sections"]["introduction"] == r"Good \cite{smith2020graph}. We do not rely on prior claims here."
+    assert state.paper_draft["citation_report"]["repaired"] == 1
+    assert "ghost1" in llm.prompts[1][1].content or "unverifiable" in llm.prompts[1][1].content
+
+
+def test_verify_claims_judges_cached_and_abstractless_references():
+    from kiwis.papers.citation_verifier import extract_claims, format_problems, verify_claims
+    no_abs = dict(GARCIA, abstract="", summary="")
+    refs = build_references([SMITH, no_abs])
+    paper = {"abstract": "", "sections": {"introduction": r"GNNs beat everything \cite{smith2020graph}. Privacy is solved \cite{garciamarquez2021privacy}."}}
+    claims = extract_claims(paper, refs)
+    assert [c["key"] for c in claims] == ["smith2020graph", "garciamarquez2021privacy"]
+    assert claims[0]["sentence"] == "GNNs beat everything [REF]."
+
+    calls = []
+
+    async def judge(system, user):
+        calls.append(user)
+        return '```json\n[{"id": 0, "verdict": "unsupported", "reason": "Abstract only introduces GNNs."}]\n```'
+
+    cache = {}
+    v = asyncio.run(verify_claims(claims, refs, judge, cache))
+    assert len(calls) == 1 and "Garc" not in calls[0]  # the abstract-less reference is never sent to the judge
+    assert (v["checked"], v["unsupported"], v["unverifiable"]) == (2, 1, 1)
+    assert "[unsupported]" in format_problems(v) and "Abstract only introduces GNNs" in format_problems(v)
+
+    asyncio.run(verify_claims(claims, refs, judge, cache))  # second round: verdict reused, no new LLM call
+    assert len(calls) == 1
+
+
+def test_verify_claims_survives_a_broken_judge():
+    from kiwis.papers.citation_verifier import verify_claims
+    refs = build_references([SMITH])
+    claims = [{"key": "smith2020graph", "section": "introduction", "sentence": "x [REF]."}]
+
+    async def garbage(system, user):
+        return "not json at all"
+
+    async def boom(system, user):
+        raise RuntimeError("down")
+
+    for judge in (garbage, boom):
+        v = asyncio.run(verify_claims(claims, refs, judge, {}))
+        assert v["unverifiable"] == 1 and v["unsupported"] == 0
+
+
+def test_reviewer_verifies_citations_and_writer_receives_the_problems(tmp_path):
+    refs = build_references([SMITH, GARCIA])
+    content = {"title": "P", "sections": {"introduction": r"GNNs solve privacy \cite{smith2020graph}."}}
+    state = PipelineState(research_topic="t", references=refs,
+                          paper_draft={"content": content, "citation_report": {"total": 2, "cited": ["smith2020graph"], "unknown": [], "uncited": []}})
+    llm = ScriptedLLM('```json\n[{"id": 0, "verdict": "unsupported", "reason": "Abstract says nothing on privacy."}]\n```',
+                      '```json\n{"overall_verdict": "Major Revision", "weaknesses": [], "required_changes": []}\n```')
+    asyncio.run(ReviewerAgent(llm_provider=llm).execute(state))
+
+    verification = state.paper_draft["citation_report"]["verification"]
+    assert verification["unsupported"] == 1
+    review_prompt = llm.prompts[1][1].content
+    assert "1 unsupported" in review_prompt and "Abstract says nothing on privacy" in review_prompt
+
+    state.review_feedback = [{"overall_verdict": "Major Revision", "weaknesses": [], "required_changes": []}]
+    state.revision_round = 1
+    revise = ScriptedLLM("```json\n" + json.dumps({"title": "P2", "sections": {"introduction": "Reworded."}}) + "\n```")
+    asyncio.run(WriterAgent(llm_provider=revise, output_dir=tmp_path).execute(state))
+    prompt = revise.prompts[0][1].content
+    assert "CITATION CHECK" in prompt and "Abstract says nothing on privacy" in prompt

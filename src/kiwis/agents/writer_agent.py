@@ -8,7 +8,8 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from ..papers.references import bibliography_items, bibtex_file, check_citations
+from ..papers.citation_verifier import format_problems
+from ..papers.references import apply_repairs, bibliography_items, bibtex_file, check_citations
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 
 
@@ -153,6 +154,7 @@ Ensure the narrative is coherent and compelling.
         # Only real references may be cited: drop invented keys, keep a report
         paper_data.pop("bibliography_entries", None)  # never trust an LLM-written bibliography
         paper_data, citation_report = check_citations(paper_data, context.references)
+        citation_report["repaired"] = await self._repair_removed_citations(paper_data, citation_report, context.references)
         paper_data["citation_report"] = citation_report
 
         # Generate LaTeX document
@@ -229,6 +231,30 @@ Ensure the narrative is coherent and compelling.
         )
         return self.output
 
+    async def _repair_removed_citations(self, paper_data: dict, report: dict, references: list[dict]) -> int:
+        """Ask the model to reword sentences that lost an invented citation so they do not read as cut off."""
+        repairs = report.get("repairs") or []
+        if not self._llm or not repairs:
+            return 0
+        from ..models.base import ChatMessage, ModelConfig
+        listing = "\n".join(f"[{i}] ({r['section']}) {r['cleaned']}" for i, r in enumerate(repairs[:30]))
+        prompt = ("Each sentence below had a citation removed because it pointed to a reference that does not exist, "
+                  "so it may now read as cut off or lean on an unsupported claim. Reword each so it reads naturally "
+                  "and only states what the paper itself supports (drop or soften the part that relied on the "
+                  "removed citation). Do NOT add citations, numbers or new facts. Keep LaTeX intact. If a sentence "
+                  'is fine as it is, return it unchanged.\nAnswer with JSON: {"0": "new sentence", "1": "..."}\n\n'
+                  + listing)
+        config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.2)
+        try:
+            text = (await self._llm.chat([ChatMessage(role="system", content="You are a careful scientific copy editor."),
+                                          ChatMessage(role="user", content=prompt)], config)).content
+            match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+            data = json.loads(match.group(1) if match else text)
+            rewrites = {int(k): v for k, v in data.items()}
+        except Exception:
+            return 0  # the deterministic cleanup stays
+        return apply_repairs(paper_data, rewrites, repairs, references)
+
     @staticmethod
     def _references_block(references: list[dict]) -> str:
         if not references:
@@ -265,8 +291,17 @@ Weaknesses:
 Required changes:
 {required[:3000]}
 Reviewer rationale: {str(review.get("decision_rationale", ""))[:1500]}
-
+{WriterAgent._citation_problems(context)}
 Rewrite the complete paper addressing this review, and include "revision_notes"."""
+
+    @staticmethod
+    def _citation_problems(context: AgentContext) -> str:
+        problems = format_problems((context.paper_draft.get("citation_report") or {}).get("verification"))
+        if not problems:
+            return ""
+        return ("\n=== CITATION CHECK ===\nAn independent judge read the abstracts of the cited papers and found these "
+                "claims not (fully) supported. Reword each claim to match what the cited paper says, cite a better "
+                "reference from the list, or remove the citation:\n" + problems + "\n")
 
     def _generate_latex(self, paper_data: dict, context: AgentContext) -> str:
         """Generate LaTeX document from parsed paper data."""

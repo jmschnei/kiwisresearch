@@ -181,6 +181,25 @@ export interface CitationReport {
   cited: string[];
   unknown: string[];
   uncited: string[];
+  repaired?: number;
+  verification?: CitationVerification | null;
+}
+
+export interface ClaimCheck {
+  key: string;
+  section: string;
+  sentence: string;
+  verdict: 'supported' | 'partial' | 'unsupported' | 'unverifiable';
+  reason: string;
+}
+
+export interface CitationVerification {
+  checked: number;
+  supported: number;
+  partial: number;
+  unsupported: number;
+  unverifiable: number;
+  items: ClaimCheck[];
 }
 
 export interface PaperVersion {

@@ -222,8 +222,16 @@ The paper's bibliography is built **only from papers the Librarian actually retr
 earlier runs recalled from the vector store). The writer is given the list with stable citation keys and may only
 `\cite{key}` them; any invented key is removed automatically, and the bibliography and `references.bib` are rendered
 from the retrieved metadata. The results page shows which references were cited and which invented citations were
-dropped. This guarantees the references exist; it does not verify that a cited paper supports the sentence citing it
-(the reviewer is told which works were cited and asked to judge plausibility).
+dropped. This guarantees the references exist.
+
+Two further passes improve quality:
+
+- **Repair.** Sentences that lost an invented citation are reworded by the writer's model so they do not read as cut
+  off (no new citations or facts allowed; if a rewrite is unsafe the plain removal is kept).
+- **Claim check.** The reviewer's model reads the abstract of each cited reference and judges whether it supports the
+  sentence citing it (`supported` / `partial` / `unsupported` / `unverifiable`). Problem claims go into the review
+  prompt and into the writer's next revision. Only abstracts are read, so details from a paper's full text come back
+  as `unverifiable`, and verdicts are advisory: nothing is deleted automatically. Skipped when no LLM is configured.
 
 ## Design Decisions
 

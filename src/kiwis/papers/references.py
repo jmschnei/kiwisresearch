@@ -204,21 +204,36 @@ def _drop_unknown(text: str, known: set[str], unknown: set[str]) -> str:
     return re.sub(r"\s?" + _CITE.pattern, repl, text)
 
 
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])(\s+)")
+
+
 def check_citations(paper: dict, references: list[dict]) -> tuple[dict, dict]:
     """Return ``(paper, report)`` with invented citation keys removed.
 
     Citations are checked in the abstract, sections and table captions. Bracket-style citations of real keys
     are converted to ``\\cite``. The report lists which references were cited (ordered), which cited keys do not
-    exist (and were removed), and which retrieved references were never cited.
+    exist (and were removed), which retrieved references were never cited, and ``repairs``: the sentences that
+    lost an invented citation (they may now read badly; see ``apply_repairs``).
     """
     known = {r["key"] for r in references}
     unknown: set[str] = set()
     cited: list[str] = []
+    repairs: list[dict] = []
 
-    def clean(text):
+    def clean(text, where=None):
         if not isinstance(text, str):
             return text
-        text = _drop_unknown(_bracket_to_cite(text, known), known, unknown)
+        text = _bracket_to_cite(text, known)
+        parts = _SENTENCE_SPLIT.split(text)  # sentences and the whitespace between them
+        for i, sentence in enumerate(parts):
+            found: set[str] = set()
+            fixed = _drop_unknown(sentence, known, found)
+            if found:
+                unknown.update(found)
+                parts[i] = fixed
+                if where:
+                    repairs.append({"section": where, "cleaned": fixed.strip(), "removed": sorted(found)})
+        text = "".join(parts)
         for k in extract_citations(text):
             if k not in cited:
                 cited.append(k)
@@ -226,8 +241,8 @@ def check_citations(paper: dict, references: list[dict]) -> tuple[dict, dict]:
 
     out = dict(paper)
     if "abstract" in out:
-        out["abstract"] = clean(out["abstract"])
-    out["sections"] = {k: clean(v) for k, v in (paper.get("sections") or {}).items()}
+        out["abstract"] = clean(out["abstract"], "abstract")
+    out["sections"] = {k: clean(v, k) for k, v in (paper.get("sections") or {}).items()}
     out["tables"] = [{**t, "caption": clean(t.get("caption", ""))} if isinstance(t, dict) else t
                      for t in (paper.get("tables") or [])]
     report = {
@@ -235,5 +250,31 @@ def check_citations(paper: dict, references: list[dict]) -> tuple[dict, dict]:
         "cited": cited,
         "unknown": sorted(unknown),
         "uncited": [r["key"] for r in references if r["key"] not in cited],
+        "repairs": repairs,
     }
     return out, report
+
+
+def apply_repairs(paper: dict, rewrites: dict[int, str], repairs: list[dict], references: list[dict]) -> int:
+    """Replace the cleaned sentence of repair ``i`` by ``rewrites[i]`` (in place). Returns how many were applied.
+
+    A rewrite is accepted only if it is non-empty, adds no citation to a non-existent reference and its original
+    sentence still appears exactly once in its section; otherwise the deterministic cleanup is kept.
+    """
+    known = {r["key"] for r in references}
+    applied = 0
+    for i, new in rewrites.items():
+        if not (0 <= i < len(repairs)) or not isinstance(new, str) or not new.strip():
+            continue
+        new = new.strip()
+        if any(k not in known for k in extract_citations(new)):
+            continue
+        old, where = repairs[i]["cleaned"], repairs[i]["section"]
+        container, key = (paper, "abstract") if where == "abstract" else (paper.get("sections") or {}, where)
+        text = container.get(key)
+        if not old or not isinstance(text, str) or text.count(old) != 1:
+            continue
+        container[key] = text.replace(old, new)
+        repairs[i]["rewritten"] = new
+        applied += 1
+    return applied

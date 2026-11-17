@@ -139,6 +139,7 @@ Analysis & Conclusions:
 {json.dumps(analysis.get("conclusions", []), indent=2, default=str)[:1000]}
 
 Provide a thorough, rigorous review covering ALL criteria. Be specific about what needs to be fixed."""
+        await self._verify_citations(context)
         prompt += self._citation_note(context)
         prompt += self._previous_round_note(context)
 
@@ -181,6 +182,27 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
         )
         return self.output
 
+    async def _verify_citations(self, context: AgentContext) -> None:
+        """Have the reviewer's own model judge whether cited abstracts support the sentences that cite them.
+
+        The result is stored in ``citation_report["verification"]`` (shown in the UI and fed back to the writer).
+        Skipped without a model. Earlier verdicts are reused so later review rounds only judge new claims.
+        """
+        report = (context.paper_draft or {}).get("citation_report")
+        if not self._llm or report is None or not getattr(context, "references", None):
+            return
+        from ..models.base import ChatMessage, ModelConfig
+        from ..papers.citation_verifier import extract_claims, verify_claims
+        config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.0)
+
+        async def judge(system: str, user: str) -> str:
+            msgs = [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
+            return (await self._llm.chat(msgs, config)).content
+
+        claims = extract_claims(context.paper_draft.get("content", {}), context.references)
+        cache = context.paper_draft.setdefault("claim_verdicts", {})
+        report["verification"] = await verify_claims(claims, context.references, judge, cache)
+
     @staticmethod
     def _citation_note(context: AgentContext) -> str:
         """Facts about the paper's references, computed by the system (not by the writer)."""
@@ -195,8 +217,22 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
 References retrieved from scholarly indexes: {report.get("total", 0)}. Cited in the paper: {len(report.get("cited", []))}.
 Invented citation keys removed automatically: {len(report.get("unknown", []))}.
 Cited works: {cited}
-Judge whether the related work is adequately covered and whether claims attributed to references are plausible for
+{ReviewerAgent._verification_note(report)}Judge whether the related work is adequately covered and whether claims attributed to references are plausible for
 those titles; flag claims without support. A paper with no or very few references has a literature problem."""
+
+    @staticmethod
+    def _verification_note(report: dict) -> str:
+        from ..papers.citation_verifier import format_problems
+        v = report.get("verification")
+        if not v:
+            return ""
+        text = (f"Claim check (an LLM read each cited abstract; abstracts only): {v['checked']} citing sentences checked, "
+                f"{v['supported']} supported, {v['partial']} partial, {v['unsupported']} unsupported, "
+                f"{v['unverifiable']} unverifiable.\n")
+        problems = format_problems(v)
+        if problems:
+            text += f"Problem claims:\n{problems}\nInclude the unsupported ones in required_changes.\n"
+        return text
 
     @staticmethod
     def _previous_round_note(context: AgentContext) -> str:
