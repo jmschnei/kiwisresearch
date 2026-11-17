@@ -144,8 +144,6 @@ def test_errors_use_dashboard_shape(tmp_path):
         assert r.status_code == 404 and r.json()["success"] is False and "message" in r.json()
         r = c.post("/api/v1/pipelines", json={"title": ""})
         assert r.status_code == 422 and r.json()["code"] == "VALIDATION_ERROR"
-        assert c.get("/api/v1/search/suggest").status_code == 501
-        assert c.post("/api/v1/swarm/ideador/restart").status_code == 501
         assert c.get("/api/v1/results/x/artifacts/..%2Fetc/download").status_code == 404
 
 
@@ -392,3 +390,18 @@ def test_depth_controls_the_number_of_review_rounds(tmp_path):
     # the whole history is restored after a restart
     with TestClient(make_loop_app(tmp_path, accept_on=99)) as c:
         assert len(c.get(f"/api/v1/results/{deep}/review").json()["data"]["rounds"]) == 3
+
+
+def test_restart_agent_and_suggest(tmp_path, monkeypatch):
+    with TestClient(make_app(tmp_path)) as c:
+        assert c.post("/api/v1/swarm/nope/restart").status_code == 404
+        assert c.post("/api/v1/swarm/ideador/restart").json()["code"] == "NOTHING_TO_RESTART"
+        assert c.get("/api/v1/search/suggest").status_code == 422
+
+        from kiwis.agents import LibrarianAgent
+
+        async def fake(self, q, max_results=5):
+            return [{"title": f"About {q}", "year": 2024, "url": "http://x"}]
+        monkeypatch.setattr(LibrarianAgent, "_search_arxiv", fake)
+        r = c.get("/api/v1/search/suggest", params={"domain": "chem", "topic": "gnn"}).json()
+        assert r["data"][0]["title"] == "About chem gnn"

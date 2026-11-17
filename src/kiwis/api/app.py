@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..config.settings import Settings
+from .catalog import PHASE_TABLE
 from .events import EventBus, now_iso
 from .jobs import JobManager, PipelineBuilder
 from .schemas import CreateResearchRequest, ReexecuteStepRequest, UpdatePipelineStatusRequest
@@ -150,8 +151,17 @@ def create_app(
 
     @app.post(f"{PREFIX}/swarm/{{agent_id}}/restart")
     async def restart_agent(agent_id: str):
-        return _err(501, "NOT_IMPLEMENTED", "Restarting individual agents is not supported; "
-                                            "pause/re-execute the pipeline step instead")
+        """Re-run the step of this agent in the most recent finished pipeline where it failed."""
+        steps = {row[3]: i + 1 for i, row in enumerate(PHASE_TABLE)}
+        if agent_id not in steps:
+            return _err(404, "NOT_FOUND", f"Unknown agent '{agent_id}'")
+        step_num = steps[agent_id]
+        for job in sorted(manager.jobs.values(), key=lambda j: j.created_at, reverse=True):
+            running = job.status == "active" or (job.task and not job.task.done())
+            if not running and job.steps[step_num - 1]["status"] == "failed":
+                manager.reexecute(job.id, step_num)
+                return _ok({"success": True, "pipelineId": job.id, "stepNum": step_num})
+        return _err(409, "NOTHING_TO_RESTART", f"No stopped pipeline has a failed '{agent_id}' step")
 
     # ------------------------------------------------------------- costs
     @app.get(f"{PREFIX}/costs")
@@ -205,7 +215,18 @@ def create_app(
 
     @app.get(f"{PREFIX}/search/suggest")
     async def suggest(domain: str = "", topic: str = ""):
-        return _err(501, "NOT_IMPLEMENTED", "Research direction suggestions are not implemented yet")
+        """Research directions drawn from the latest arXiv papers on the domain/topic."""
+        from ..agents import LibrarianAgent
+        query = f"{domain} {topic}".strip()
+        if not query:
+            raise HTTPException(422, "Provide a domain or a topic")
+        papers = await LibrarianAgent()._search_arxiv(query, max_results=5)
+        if papers and "error" in papers[0]:
+            return _err(502, "UPSTREAM_ERROR", papers[0]["error"])
+        return _ok([{
+            "title": p["title"], "year": p.get("year"), "url": p.get("url", ""),
+            "rationale": f"Active research area: \"{p['title']}\" ({p.get('year') or 'n.d.'})",
+        } for p in papers])
 
     # ------------------------------------------------------------- websocket
     @app.websocket("/ws/events")

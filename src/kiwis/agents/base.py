@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import json
 import uuid
 from abc import ABC, abstractmethod
@@ -85,9 +86,8 @@ class BaseAgent(ABC):
         return f"You are a specialized {self.ROLE} agent in the Kiwis Research system.\n{self.DESCRIPTION}"
 
     def _log_event(self, event: str, details: dict | None = None):
-        """Log agent events (use logger in production)."""
-        meta = details or {}
-        pass  # TODO: integrate with loguru
+        """Log an agent event through the standard logging module (``kiwis.agent.<name>``)."""
+        logging.getLogger(f"kiwis.agent.{self.name}").info("%s%s", event, f" {details}" if details else "")
 
     @classmethod
     def get_role(cls) -> str:
