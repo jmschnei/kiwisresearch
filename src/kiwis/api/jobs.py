@@ -39,16 +39,8 @@ def default_pipeline_builder(settings: Settings, tracker: UsageTracker, output_d
 
 
 def _make_sandbox(settings: Settings, output_dir: Path):
-    from ..execution.isolated_sandbox import IsolatedSandbox
-
-    if settings.sandbox.mode == "docker":
-        from ..execution.docker_sandbox import DockerSandbox, docker_available
-        if docker_available():
-            return DockerSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds,
-                                 memory_mb=settings.sandbox.memory_mb, network=not settings.sandbox.network_isolated)
-        logger.warning("Sandbox mode is 'docker' but no Docker daemon answers; falling back to the isolated "
-                       "subprocess sandbox, which does NOT isolate network or filesystem")
-    return IsolatedSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds)
+    from ..execution.factory import make_sandbox
+    return make_sandbox(settings, output_dir)
 
 
 REVIEW_REASONS = {

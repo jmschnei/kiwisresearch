@@ -36,6 +36,11 @@ class LLMProviderConfig(BaseModel):
     supported_models: list[str] = Field(default_factory=list)
     rate_limit_rpm: int = Field(default=1000, ge=1)
     rate_limit_tpd: int = Field(default=500000, ge=1)
+    # Ollama only: seconds to wait for one reply (CPU inference can be slow), context window (num_ctx; Ollama's
+    # small default silently truncates long prompts) and the local model used for literature-memory embeddings.
+    timeout_seconds: Optional[float] = Field(default=None, gt=0)
+    context_window: Optional[int] = Field(default=None, ge=512)
+    embedding_model: Optional[str] = None
 
 
 class ProviderRegistry(BaseModel):

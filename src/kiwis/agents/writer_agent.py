@@ -12,6 +12,7 @@ from ..papers.citation_verifier import format_problems
 from ..papers.references import apply_repairs, bibliography_items, bibtex_file, check_citations
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 
 class WriterAgent(BaseAgent):
@@ -141,8 +142,7 @@ Ensure the narrative is coherent and compelling.
 
         # Parse paper content
         try:
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            paper_data = json.loads(match.group(1)) if match else {}
+            paper_data = extract_json(response_text) or {}
         except Exception:
             paper_data = {}
         if revising and not paper_data.get("sections"):
@@ -249,9 +249,7 @@ Ensure the narrative is coherent and compelling.
         try:
             text = (await self._llm.chat([ChatMessage(role="system", content="You are a careful scientific copy editor."),
                                           ChatMessage(role="user", content=prompt)], config)).content
-            match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
-            data = json.loads(match.group(1) if match else text)
-            rewrites = {int(k): v for k, v in data.items()}
+            rewrites = {int(k): v for k, v in (extract_json(text) or {}).items()}
         except Exception:
             return 0  # the deterministic cleanup stays
         return apply_repairs(paper_data, rewrites, repairs, references)

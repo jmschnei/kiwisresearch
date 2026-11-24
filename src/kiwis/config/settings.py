@@ -119,8 +119,9 @@ class Settings(BaseModel):
             o = prov["providers"].setdefault("ollama", {"name": "Ollama (local)", "provider_type": "ollama"})
             if ollama.get("base_url"):
                 o["base_url"] = ollama["base_url"]
-            if ollama.get("default_model"):
-                o["default_model"] = ollama["default_model"]
+            for key in ("default_model", "timeout_seconds", "context_window", "embedding_model"):
+                if ollama.get(key):
+                    o[key] = ollama[key]
         return data
     
     @classmethod

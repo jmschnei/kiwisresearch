@@ -15,7 +15,8 @@ def test_ollama_provider_instantiation():
     provider = OllamaProvider()
     assert provider._base_url == "http://localhost:11434"
     assert provider._default_model == "llama3.2"
-    assert provider._timeout == 120.0
+    assert provider._timeout == OllamaProvider.DEFAULT_TIMEOUT == 600.0  # CPU inference can take minutes
+    assert provider._context_window == OllamaProvider.DEFAULT_CONTEXT
 
 
 def test_ollama_provider_custom_url():

@@ -42,7 +42,10 @@ def create_provider(name: str, registry: ProviderRegistry) -> LLMProvider:
         return DeepSeekProvider(base_url=cfg.base_url)
     if ptype == LLMProviderType.OLLAMA:
         from .providers.ollama_provider import OllamaProvider
-        return OllamaProvider(base_url=cfg.base_url, default_model=cfg.default_model)
+        return OllamaProvider(base_url=cfg.base_url, default_model=cfg.default_model,
+                              timeout=cfg.timeout_seconds or OllamaProvider.DEFAULT_TIMEOUT,
+                              context_window=cfg.context_window or OllamaProvider.DEFAULT_CONTEXT,
+                              embedding_model=cfg.embedding_model)
     raise ValueError(f"Unsupported provider type: {ptype}")
 
 

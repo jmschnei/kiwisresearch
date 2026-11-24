@@ -9,6 +9,7 @@ import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 
 class DataAnalystAgent(BaseAgent):
@@ -102,8 +103,7 @@ Provide significance testing where appropriate."""
 
         # Try to extract analysis JSON and visualization code
         try:
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            data = json.loads(match.group(1)) if match else {}
+            data = extract_json(response_text) or {}
         except Exception:
             data = {"conclusions": [], "limitations": [], "recommendations": []}
 

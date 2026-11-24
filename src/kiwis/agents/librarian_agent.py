@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 from ..papers.references import MAX_REFERENCES, build_references
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +155,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
 
         # Parse output
         try:
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            data = json.loads(match.group(1)) if match else {}
+            data = extract_json(response_text) or {}
         except Exception:
             data = {"summary": "Synthesis of literature for: " + topic, "papers": [], "gaps": [], "key_findings": []}
 

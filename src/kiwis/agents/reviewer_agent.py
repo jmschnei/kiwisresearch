@@ -9,6 +9,7 @@ import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 
 class ReviewerAgent(BaseAgent):
@@ -157,8 +158,7 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
 
         # Parse review JSON
         try:
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            review_data = json.loads(match.group(1)) if match else {}
+            review_data = extract_json(response_text) or {}
         except Exception:
             review_data = {
                 "overall_verdict": "Review requires LLM",

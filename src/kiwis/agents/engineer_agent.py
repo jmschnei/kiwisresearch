@@ -9,6 +9,7 @@ import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import strip_thinking
 
 
 class EngineerAgent(BaseAgent):
@@ -97,7 +98,7 @@ Use standard practices: argparse configs, logging, checkpoints."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response_text = (await self._llm.chat(msgs, config)).content
+            response_text = strip_thinking((await self._llm.chat(msgs, config)).content)
         else:
             response_text = "# Engineer placeholder"
 
@@ -180,7 +181,7 @@ Return ONLY the corrected Python code inside a ```python block.
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=debug_prompt),
             ]
-            response_text = (await self._llm.chat(msgs, config)).content
+            response_text = strip_thinking((await self._llm.chat(msgs, config)).content)
             
             fix_match = re.search(r'```(?:python)?\s*\n(.*?)```', response_text, re.DOTALL)
             if fix_match:

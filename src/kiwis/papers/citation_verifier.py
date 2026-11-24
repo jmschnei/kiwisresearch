@@ -56,6 +56,8 @@ def extract_claims(paper: dict, references: list[dict]) -> list[dict]:
 
 
 def _parse(text: str) -> list[dict]:
+    from ..agents.parsing import strip_thinking
+    text = strip_thinking(text)
     match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
     raw = match.group(1) if match else text
     try:

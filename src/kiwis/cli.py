@@ -19,29 +19,53 @@ def setup_logging(level: str = "INFO"):
     )
 
 
-async def run_research(topic: str, config_path: str | None = None, iterations: int = 1):
-    """Run the full research pipeline for a given topic."""
-    from .config.settings import Settings
+async def run_research(topic: str, config_path: str | None = None, iterations: int = 1, hypothesis: str = ""):
+    """Run the full research pipeline for a topic, like a research job in the dashboard.
+
+    Each iteration writes to its own folder ``<paths.output>/runs/<timestamp>-<n>/`` (paper, figures, sandbox
+    files, ``state.json``) and runs generated code in the configured sandbox.
+    """
+    import json
+    import time
+    from datetime import datetime
+
+    from .config.settings import load_settings
+    from .execution.factory import make_sandbox
+    from .models.usage import UsageTracker
+    from .orchestrator.agent_factory import AgentFactory
     from .orchestrator.pipeline import ResearchPipeline
-    
-    settings = Settings.from_file(config_path) if config_path else Settings.default()
+
+    settings = load_settings(config_path)
     setup_logging(settings.logging.level)
-    
     logger = logging.getLogger("kiwis.cli")
     logger.info(f"Starting research for: {topic}")
-    
-    pipeline = ResearchPipeline(settings=settings)
-    pipeline.build_default_pipeline()
-    
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    state = None
     for i in range(iterations):
-        logger.info(f"Iteration {i+1}/{iterations}")
-        state = await pipeline.run(topic)
-        logger.info(f"Iteration {i+1} complete. Errors: {len(state.errors)}")
+        out_dir = Path(settings.paths.output) / "runs" / f"{stamp}-{i + 1}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        tracker = UsageTracker()
+        sandbox = make_sandbox(settings, out_dir)
+        factory = AgentFactory(settings, sandbox=sandbox, usage_tracker=tracker, output_dir=out_dir)
+        pipeline = ResearchPipeline(settings=settings, agent_factory=factory.create, sandbox=sandbox)
+        pipeline.build_default_pipeline()
+
+        logger.info(f"Iteration {i + 1}/{iterations} -> {out_dir}")
+        started = time.monotonic()
+        state = await pipeline.run(topic, hypothesis)
+        (out_dir / "state.json").write_text(json.dumps(state.to_dict(), indent=2, default=str))
+
+        logger.info(f"Iteration {i + 1} finished in {time.monotonic() - started:.0f}s, "
+                    f"{tracker.total_tokens} tokens (estimated), ${tracker.total_cost:.4f}")
+        paper = state.paper_draft or {}
+        for label, key in (("Paper (LaTeX)", "latex_path"), ("Paper (PDF)", "pdf_path")):
+            if paper.get(key):
+                logger.info(f"{label}: {paper[key]}")
         if state.errors:
             logger.error("Errors encountered:")
             for err in state.errors:
                 logger.error(f"  - {err}")
-    
     return state
 
 
@@ -102,6 +126,13 @@ def main(argv: list[str] | None = None):
     research_parser.add_argument("topic", help="Research topic")
     research_parser.add_argument("-c", "--config", help="Path to config file", default=None)
     research_parser.add_argument("-n", "--iterations", type=int, default=1, help="Number of iterations")
+    research_parser.add_argument("--hypothesis", default="", help="Optional starting hypothesis")
+
+    # Check command
+    check_parser = subparsers.add_parser("check", help="Check that the configured models, sandbox and tools are ready")
+    check_parser.add_argument("-c", "--config", help="Path to config file", default=None)
+    check_parser.add_argument("--ping", action="store_true",
+                              help="Also send a one-line prompt to each model in use (local models: loads them once)")
     
     # Serve command
     serve_parser = subparsers.add_parser("serve", help="Run the dashboard API (FastAPI)")
@@ -151,7 +182,15 @@ logging:
         logger.info(f"Config written to {config_file}")
         
     elif args.command == "research":
-        state = asyncio.run(run_research(args.topic, config_path=args.config, iterations=args.iterations))
+        state = asyncio.run(run_research(args.topic, config_path=args.config, iterations=args.iterations,
+                                         hypothesis=args.hypothesis))
+
+    elif args.command == "check":
+        from .preflight import format_report, run_checks
+        from .config.settings import load_settings
+        results = asyncio.run(run_checks(load_settings(args.config), ping=args.ping))
+        print(format_report(results))
+        sys.exit(0 if all(r.ok or not r.required for r in results) else 1)
     
     elif args.command == "serve":
         try:

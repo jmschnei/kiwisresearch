@@ -340,6 +340,25 @@ class MyProvider(LLMProvider):
 
 ## Local Models with Ollama 🏠
 
+### Quick local test run
+
+`kiwis_config.ollama.yaml` runs every agent on a small local model (`llama3.2:3b`) with local embeddings
+(`nomic-embed-text`), one review round and short replies, to check the whole pipeline end to end quickly and for free
+(the output quality of a 3B model is modest):
+
+```bash
+ollama pull llama3.2:3b && ollama pull nomic-embed-text      # if not pulled yet
+kiwis check    -c kiwis_config.ollama.yaml          # Ollama up? models pulled? sandbox, LaTeX? (calls no model)
+kiwis check    -c kiwis_config.ollama.yaml --ping   # also loads the model once and gets a one-word reply
+kiwis research -c kiwis_config.ollama.yaml "graph neural networks for molecular property prediction"
+# or: kiwis serve -c kiwis_config.ollama.yaml  and start the research from the dashboard
+```
+
+CLI runs are written to `output/runs/<timestamp>-1/` (paper `.tex`/`.pdf`, `references.bib`, sandbox files,
+`state.json`). For Ollama the provider settings `context_window` (Ollama's default would truncate the agents' long
+prompts), `timeout_seconds` and `embedding_model` can be set under `providers.ollama`. Small models often answer with
+bare JSON or prose around it; the agents accept that.
+
 Run any model locally — no API keys, no per-token costs. Just install [Ollama](https://ollama.ai) and start a model:
 
 ```bash

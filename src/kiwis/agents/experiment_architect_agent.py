@@ -9,6 +9,7 @@ import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 
 class ExperimentArchitectAgent(BaseAgent):
@@ -101,8 +102,7 @@ Design a comprehensive experimental plan for testing this hypothesis. Consider:
             response_text = "# Experiment Architect placeholder"
 
         try:
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            data = json.loads(match.group(1)) if match else {}
+            data = extract_json(response_text) or {}
         except Exception:
             data = {"methodology": {"steps": []}, "datasets": [], "baselines": [], "metrics": [], "hyperparameters": {}, "code_structure": {}, "reproducibility": {}}
 

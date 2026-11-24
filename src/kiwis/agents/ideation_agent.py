@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
+from .parsing import extract_json
 
 
 class IdeationAgent(BaseAgent):
@@ -83,10 +84,8 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
         
         try:
             # Extract JSON from markdown code blocks
-            match = re.search(r'```(?:json)?\s*\n(.*?)```', response_text, re.DOTALL)
-            if match:
-                data = json.loads(match.group(1))
-            else:
+            data = extract_json(response_text)
+            if not data or not isinstance(data.get("hypotheses"), list) or not data["hypotheses"]:
                 data = {"hypotheses": [{"title": "N/A", "hypothesis": response_text, "motivation": "", "feasibility": "", "novelty": "", "risk_level": "Medium"}], "top_hypothesis_index": 0, "rationale": ""}
         except (json.JSONDecodeError, Exception):
             data = {
@@ -96,8 +95,11 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
             }
 
         # Update context with top hypothesis
-        if data.get("hypotheses"):
-            top = data["hypotheses"][data.get("top_hypothesis_index", 0)]
+        hypotheses = [h for h in data.get("hypotheses", []) if isinstance(h, dict)]
+        if hypotheses:
+            idx = data.get("top_hypothesis_index", 0)
+            # small models sometimes return an out-of-range or non-integer index
+            top = hypotheses[idx] if isinstance(idx, int) and 0 <= idx < len(hypotheses) else hypotheses[0]
             context.hypothesis = top.get("hypothesis", "")
 
         self.state = AgentState.COMPLETED
