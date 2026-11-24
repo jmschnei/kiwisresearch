@@ -13,7 +13,7 @@ RUN if [ "$WITH_LATEX" = "1" ]; then \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[api,pgvector]"
+RUN pip install --no-cache-dir ".[api,pgvector,experiments]"
 COPY kiwis_config.yaml ./kiwis_config.yaml
 
 # Runtime state (research jobs in output/, embedded vector memory in chroma_kiwis/) lives in /data

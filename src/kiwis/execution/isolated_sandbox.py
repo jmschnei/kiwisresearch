@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import tempfile
 import time
 from typing import Optional
@@ -45,7 +46,7 @@ class IsolatedSandbox(CodeSandbox):
             f.write(code)
 
         try:
-            cmd = ["python", "-u", script_path]
+            cmd = [sys.executable, "-u", script_path]  # same interpreter as Kiwis (`python` may not exist)
             if extra_args:
                 cmd.extend(extra_args)
 

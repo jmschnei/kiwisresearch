@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+from ..models.defaults import DEFAULT_MODEL
 
 
 class EngineerAgent(BaseAgent):
@@ -91,7 +92,7 @@ Use standard practices: argparse configs, logging, checkpoints."""
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.2)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.2)
             msgs = [
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
@@ -174,7 +175,7 @@ Return ONLY the corrected Python code inside a ```python block.
         
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.1)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.1)
             msgs = [
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=debug_prompt),

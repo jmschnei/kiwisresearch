@@ -14,6 +14,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from ..papers.references import MAX_REFERENCES, build_references
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+from ..models.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ Synthesize a comprehensive state-of-the-art review. Identify key trends, methodo
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.2)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.2)
             msgs = [
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),

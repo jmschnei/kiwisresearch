@@ -92,8 +92,10 @@ def test_factory_injects_model_config_and_provider(monkeypatch):
 def test_settings_from_yaml_applies_agent_models():
     root = Path(__file__).parent.parent.parent
     settings = Settings.from_file(root / "kiwis_config.yaml")
-    assert settings.agents.reviewer.model.startswith("claude")
-    assert settings.agents.engineer.max_tokens == 16384
+    assert settings.agents.reviewer.model == "claude-opus-5-5"  # differs from the built-in default model
+    assert settings.agents.writer.max_tokens == 32000
+    assert settings.providers.providers["deepseek"].default_model == "deepseek-v4-pro"
+    assert settings.providers.providers["deepseek"].base_url  # YAML block merged with the built-in provider
     assert "ollama" in settings.providers.providers
 
 
@@ -110,3 +112,15 @@ def test_pipeline_uses_injected_factory():
     state = PipelineState(research_topic="t")
     asyncio.run(pipe._run_hypothesis_generation(state))
     assert created == ["ideation"] and state.hypothesis == "H1"
+
+
+def test_config_files_use_no_retired_models():
+    """Providers retire models; the shipped configs must not point at retired IDs."""
+    import re
+    root = Path(__file__).parent.parent.parent
+    retired = re.compile(r"claude-3|gpt-4-turbo|gpt-4o|deepseek-chat|deepseek-reasoner")
+    for f in [root / "kiwis_config.yaml", *sorted((root / "src" / "kiwis").rglob("*.py")),
+              *sorted((root / "src" / "kiwis" / "config").glob("*.yaml"))]:
+        hits = [line for line in f.read_text().splitlines() if retired.search(line) and "shuts down" not in line
+                and "retired" not in line and not line.lstrip().startswith(('"gpt-4o', "# "))]
+        assert not hits, f"{f.name}: {hits}"

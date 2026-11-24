@@ -13,11 +13,12 @@ providers:
     name: "OpenAI"
     api_key_env_var: "OPENAI_API_KEY"
     base_url: null                        # null = default https://api.openai.com/v1
-    default_model: "gpt-4o"
+    default_model: "gpt-6.2-sol"
     supported_models:
-      - "gpt-4o"                          # Fast, general-purpose — best default
-      - "gpt-4o-mini"                     # Cost-effective alternative
-      - "gpt-4-turbo"                     # High-capability for complex tasks
+      - "gpt-6.2-sol"                     # General-purpose default ($2 / $10 per 1M tokens)
+      - "gpt-6.2-astra"                   # Flagship for hard reasoning ($8 / $40)
+      - "gpt-6.1-terra"                   # Fast, efficient ($1 / $5)
+      - "gpt-6-luna"                      # Cheapest, high volume ($0.10 / $0.50)
     rate_limit_rpm: 1000
     rate_limit_tpd: 500000
 
@@ -26,10 +27,11 @@ providers:
     name: "Anthropic Claude"
     api_key_env_var: "ANTHROPIC_API_KEY"
     base_url: null
-    default_model: "claude-3-5-sonnet-20241022"
+    default_model: "claude-opus-5-5"
     supported_models:
-      - "claude-3-5-sonnet-20241022"     # Best for reasoning/criticism (reviewer)
-      - "claude-3-opus-20240229"         # Strongest for complex analysis
+      - "claude-opus-5-5"                # Default; strongest for critical analysis ($4 / $20)
+      - "claude-sonnet-5-5"              # Faster and cheaper ($2 / $10)
+      - "claude-haiku-5-5"               # Cheapest, simple tasks ($0.10 / $0.50)
     rate_limit_rpm: 500
     rate_limit_tpd: 200000
 
@@ -38,10 +40,10 @@ providers:
     name: "DeepSeek"
     api_key_env_var: "DEEPSEEK_API_KEY"
     base_url: "https://api.deepseek.com/v1"
-    default_model: "deepseek-reasoner"
+    default_model: "deepseek-v4-pro"
     supported_models:
-      - "deepseek-reasoner"              # Strong reasoning capabilities
-      - "deepseek-chat"                  # General chat, very cost-effective
+      - "deepseek-v4-pro"                # Strongest DeepSeek model
+      - "deepseek-flash"                 # Very cost-effective
     rate_limit_rpm: 800
     rate_limit_tpd: 300000
 
@@ -81,12 +83,12 @@ providers:
 # Model Assignment by Agent Role (overrides providers[].default_model)
 # =============================================================================
 agent_model_assignments:
-  ideation: "gpt-4o"                    # Creative reasoning for hypothesis generation
-  librarian: "gpt-4o"                   # Factual retrieval and synthesis
-  experiment_architect: "gpt-4o"        # Technical planning
+  ideation: "gpt-6.2-sol"               # Creative reasoning for hypothesis generation
+  librarian: "gpt-6.2-sol"              # Factual retrieval and synthesis
+  experiment_architect: "gpt-6.2-sol"   # Technical planning
   engineer: "llama3.2"                  # Can run locally — cost savings on code gen!
   data_analyst: "mistral-nemo"          # Strong reasoning, runs locally
-  writer: "claude-3-5-sonnet-20241022"  # Long-form writing — remote recommended
+  writer: "claude-opus-5-5"             # Long-form writing — remote recommended
   reviewer: "llama3.3"                  # Critical analysis — can run locally
 
 # =============================================================================

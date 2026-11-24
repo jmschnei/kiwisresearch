@@ -6,6 +6,7 @@ import os
 from typing import Any, Optional
 
 from ..base import ChatMessage, LLMProvider, ModelConfig
+from ..defaults import DEFAULT_DEEPSEEK_MODEL
 
 
 class DeepSeekProvider(LLMProvider):
@@ -42,7 +43,7 @@ class DeepSeekProvider(LLMProvider):
         system_prompt: Optional[str] = None,
         config: Optional[ModelConfig] = None,
     ) -> str:
-        cfg = config or ModelConfig(model_name="deepseek-reasoner")
+        cfg = config or ModelConfig(model_name=DEFAULT_DEEPSEEK_MODEL)
         msgs: list[ChatMessage] = []
         if system_prompt:
             msgs.append(ChatMessage(role="system", content=system_prompt))

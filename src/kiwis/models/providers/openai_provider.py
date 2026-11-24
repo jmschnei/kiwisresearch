@@ -6,6 +6,15 @@ import os
 from typing import Any, Optional
 
 from ..base import ChatMessage, LLMProvider, ModelConfig
+from ..defaults import DEFAULT_OPENAI_MODEL
+
+# Models that still take sampling parameters and `max_tokens`. Everything newer (gpt-5.x, gpt-6.x, o-series) is a
+# reasoning model: it rejects temperature/top_p/penalties and counts reasoning tokens in `max_completion_tokens`.
+_CLASSIC_PREFIXES = ("gpt-4", "gpt-3.5")
+
+
+def is_reasoning_model(model: str) -> bool:
+    return not model.lower().startswith(_CLASSIC_PREFIXES)
 
 
 class OpenAIProvider(LLMProvider):
@@ -28,20 +37,34 @@ class OpenAIProvider(LLMProvider):
             self._client = AsyncOpenAI(**kwargs)
         return self._client
 
+    def build_request(self, messages: list[ChatMessage], config: ModelConfig) -> dict[str, Any]:
+        """Chat Completions arguments for this model.
+
+        Against a custom ``base_url`` (an OpenAI-compatible server such as vLLM) the classic parameters are sent,
+        since those servers usually do not know ``max_completion_tokens``.
+        """
+        request: dict[str, Any] = {
+            "model": config.model_name,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+        }
+        if config.stop_sequences:
+            request["stop"] = list(config.stop_sequences)
+        if self._base_url is None and is_reasoning_model(config.model_name):
+            request["max_completion_tokens"] = config.max_tokens
+            return request
+        request.update(max_tokens=config.max_tokens, temperature=config.temperature, top_p=config.top_p,
+                       presence_penalty=config.presence_penalty, frequency_penalty=config.frequency_penalty)
+        return request
+
     async def chat(self, messages: list[ChatMessage], config: ModelConfig) -> ChatMessage:
         client = self._get_client()
-        openai_msgs = [{"role": m.role, "content": m.content} for m in messages]
-        resp = await client.chat.completions.create(
-            model=config.model_name,
-            messages=openai_msgs,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            top_p=config.top_p,
-            stop=config.stop_sequences if config.stop_sequences else None,
-            presence_penalty=config.presence_penalty,
-            frequency_penalty=config.frequency_penalty,
-        )
+        resp = await client.chat.completions.create(**self.build_request(messages, config))
         choice = resp.choices[0]
+        if choice.finish_reason == "length":
+            import logging
+            logging.getLogger(__name__).warning(
+                "%s reply hit the token limit (%s); the answer is truncated - raise max_tokens for this agent",
+                config.model_name, config.max_tokens)
         return ChatMessage(role="assistant", content=choice.message.content or "")
 
     async def generate_text(
@@ -50,7 +73,7 @@ class OpenAIProvider(LLMProvider):
         system_prompt: Optional[str] = None,
         config: Optional[ModelConfig] = None,
     ) -> str:
-        cfg = config or ModelConfig(model_name="gpt-4o")
+        cfg = config or ModelConfig(model_name=DEFAULT_OPENAI_MODEL)
         msgs: list[ChatMessage] = []
         if system_prompt:
             msgs.append(ChatMessage(role="system", content=system_prompt))

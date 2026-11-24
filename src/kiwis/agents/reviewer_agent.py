@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+from ..models.defaults import DEFAULT_MODEL
 
 
 class ReviewerAgent(BaseAgent):
@@ -145,7 +146,7 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.1)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.1)
             msgs = [
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
@@ -193,7 +194,7 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
             return
         from ..models.base import ChatMessage, ModelConfig
         from ..papers.citation_verifier import extract_claims, verify_claims
-        config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.0)
+        config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.0)
 
         async def judge(system: str, user: str) -> str:
             msgs = [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]

@@ -4,7 +4,7 @@ agents:
   ideation:
     role: "ideation"
     description: "Analyzes literature gaps and proposes novel research hypotheses"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.7          # High creativity for hypothesis generation
     max_tokens: 4096
     enabled: true
@@ -13,7 +13,7 @@ agents:
   librarian:
     role: "librarian"
     description: "Queries academic APIs and synthesizes literature reviews"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.2          # Low temperature for factual accuracy
     max_tokens: 8192
     enabled: true
@@ -25,7 +25,7 @@ agents:
   experiment_architect:
     role: "experiment_architect"
     description: "Designs methodologies, defines metrics, selects datasets"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.4          # Balanced creativity and rigor
     max_tokens: 8192
     enabled: true
@@ -33,7 +33,7 @@ agents:
   engineer:
     role: "engineer"
     description: "Writes code, executes experiments, debugs iteratively"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.2          # Low for precise code generation
     max_tokens: 16384
     enabled: true
@@ -43,7 +43,7 @@ agents:
   data_analyst:
     role: "data_analyst"
     description: "Processes results, generates visualizations, extracts conclusions"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.3          # Moderate for balanced analysis
     max_tokens: 8192
     enabled: true
@@ -51,7 +51,7 @@ agents:
   writer:
     role: "writer"
     description: "Writes academic papers and compiles PDFs via LaTeX"
-    model: "gpt-4o"
+    model: "gpt-6.2-sol"
     temperature: 0.4          # Moderate creativity for writing
     max_tokens: 32768         # Long-form content needs more tokens
     enabled: true
@@ -59,7 +59,7 @@ agents:
   reviewer:
     role: "reviewer"
     description: "Adversarial peer reviewer simulating NeurIPS/ICML standards"
-    model: "claude-3-5-sonnet-20241022"  # Best for critical analysis
+    model: "claude-opus-5-5"   # Best for critical analysis
     temperature: 0.1          # Lowest for thorough, rigorous review
     max_tokens: 8192
     enabled: true

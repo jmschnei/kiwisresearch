@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from ..models.defaults import DEFAULT_MAX_TOKENS, DEFAULT_MODEL
+
 
 class AgentRole(str, Enum):
     IDEATION = "ideation"
@@ -21,11 +23,11 @@ class AgentRole(str, Enum):
 class AgentConfig(BaseModel):
     """Configuration for a single agent."""
     role: AgentRole
-    model: str = Field(default="gpt-4o")
+    model: str = Field(default=DEFAULT_MODEL)
     provider: Optional[str] = Field(default=None)  # None -> inferred from model name
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     system_prompt_path: Optional[str] = None
-    max_tokens: int = Field(default=8192, ge=256)
+    max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, ge=256)
     enabled: bool = Field(default=True)
 
 

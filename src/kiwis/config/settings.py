@@ -9,6 +9,7 @@ from typing import Optional
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from ..models.defaults import DEFAULT_MODEL
 from .agents import AgentRegistry
 from .llm_providers import ProviderRegistry
 
@@ -79,7 +80,7 @@ class Settings(BaseModel):
 
     # LLM defaults (can be overridden per-agent)
     default_provider: str = Field(default="openai")
-    default_model: str = Field(default="gpt-4o")
+    default_model: str = Field(default=DEFAULT_MODEL)
 
     # Per-agent model settings and LLM provider registry
     agents: AgentRegistry = Field(default_factory=AgentRegistry)

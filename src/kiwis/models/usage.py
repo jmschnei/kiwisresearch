@@ -15,12 +15,21 @@ from .base import ChatMessage, LLMProvider, ModelConfig
 
 # (input, output) USD per 1M tokens; matched by model-name prefix, longest prefix first.
 DEFAULT_PRICES: dict[str, tuple[float, float]] = {
+    # OpenAI (gpt-4o family shuts down 2027-01-14)
+    "gpt-6.2-astra": (8.00, 40.00),
+    "gpt-6.2-sol": (2.00, 10.00),
+    "gpt-6.1-terra": (1.00, 5.00),
+    "gpt-6-luna": (0.10, 0.50),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
-    "gpt-4-turbo": (10.00, 30.00),
-    "claude-3-5-sonnet": (3.00, 15.00),
-    "claude-3-opus": (15.00, 75.00),
-    "deepseek": (0.27, 1.10),
+    # Anthropic
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+    # DeepSeek (peak-hour list prices; off-peak is half)
+    "deepseek-v4-pro": (1.32, 3.96),
+    "deepseek-flash": (0.30, 1.20),
+    "deepseek": (0.30, 1.20),
 }
 
 

@@ -36,13 +36,18 @@ A modular, production-ready framework that orchestrates specialized AI agents th
 
 | Agent | Role | Model | Temperature | Description |
 |-------|------|-------|-------------|-------------|
-| **Ideation** | Hypothesis Generation | gpt-4o | 0.7 | Proposes novel, viable research questions |
-| **Librarian** | RAG Literature Review | gpt-4o | 0.2 | Queries arXiv/Semantic Scholar, synthesizes SoTA |
-| **Experiment Architect** | Methodology Design | gpt-4o | 0.4 | Designs experiments, defines metrics & baselines |
-| **Engineer** | Code + Debugging | gpt-4o | 0.2 | Writes code, runs experiments, fixes bugs iteratively |
-| **Data Analyst** | Results Analysis | gpt-4o | 0.3 | Statistical analysis, visualization, conclusions |
-| **Writer** | Paper Writing | gpt-4o | 0.4 | Academic paper in NeurIPS/ICML format + LaTeX PDF |
-| **Reviewer** | Adversarial Peer Review | claude-3.5s | 0.1 | Simulates NeurIPS/ICML reviewer for rigorous critique |
+| **Ideation** | Hypothesis Generation | gpt-6.2-sol | 0.7 | Proposes novel, viable research questions |
+| **Librarian** | RAG Literature Review | gpt-6.2-sol | 0.2 | Queries arXiv/Semantic Scholar, synthesizes SoTA |
+| **Experiment Architect** | Methodology Design | gpt-6.2-sol | 0.4 | Designs experiments, defines metrics & baselines |
+| **Engineer** | Code + Debugging | gpt-6.2-sol | 0.2 | Writes code, runs experiments, fixes bugs iteratively |
+| **Data Analyst** | Results Analysis | gpt-6.2-sol | 0.3 | Statistical analysis, visualization, conclusions |
+| **Writer** | Paper Writing | gpt-6.2-sol | 0.4 | Academic paper in NeurIPS/ICML format + LaTeX PDF |
+| **Reviewer** | Adversarial Peer Review | claude-opus-5-5 | 0.1 | Simulates NeurIPS/ICML reviewer for rigorous critique |
+
+Model IDs are defaults in `kiwis_config.yaml` (central list: `src/kiwis/models/defaults.py`). Temperatures only reach
+models that support sampling (DeepSeek, Ollama, older OpenAI models); current OpenAI gpt-6.x and Claude models are
+reasoning models with fixed sampling, so it is not sent to them, and their `max_tokens` (default 32000) also covers
+their reasoning.
 
 
 > 💡 **Hybrid mode**: Assign cloud models to creative tasks (writing, ideation) and local Ollama models to analytical tasks (code generation, analysis) — cutting API costs by 60-80%.
@@ -57,6 +62,10 @@ git clone <repo-url>
 cd kiwis-research
 pip install -e ".[dev]"
 ```
+
+Extras: `api` (dashboard backend), `pgvector` (PostgreSQL memory), `experiments` (pandas, scipy, scikit-learn,
+seaborn, plotly: libraries the generated experiment code may import when it runs in the `isolated` sandbox; the
+`docker` sandbox image already has them), `dev` (tests and linters).
 
 ### Initialize a Project
 
@@ -179,7 +188,7 @@ Key configuration options in `kiwis_config.yaml`:
 | `pipeline.max_iterations` | Max research iterations | 3 |
 | `pipeline.literature_review_papers_max` | Max papers to retrieve | 20 |
 | `sandbox.mode` | Execution mode (`docker` or `isolated`) | `docker` |
-| `agents.*.model` | Model per agent | `gpt-4o` |
+| `agents.*.model` | Model per agent | `gpt-6.2-sol` |
 | `agents.*.temperature` | Creativity per agent (see table above) | varies |
 | `memory.vector_store` | Vector database (`chroma`, `qdrant`, `pgvector`) | `chroma` |
 
@@ -321,7 +330,6 @@ class MyProvider(LLMProvider):
 
 ## Limitations & Future Work
 
-- [ ] Full LangGraph integration for more sophisticated workflow control
 - [ ] Distributed execution across multiple sandbox instances
 - [ ] Model evaluation benchmarking suite
 - [ ] Integration with HuggingFace Datasets API
@@ -363,9 +371,9 @@ ollama:
 
 | Provider | Cost | Quality tier | Best for |
 |----------|------|-------------|----------|
-| **OpenAI gpt-4o** | $2.50 | Production-grade | Writing, ideation |
-| **Anthropic Claude 3.5 Sonnet** | $3.00 | Reasoning champion | Adversarial review |
-| **DeepSeek** | $0.14 | Near-Parity | Budget cloud fallback |
+| **OpenAI gpt-6.2-sol** | $2.00 | Production-grade | Writing, ideation |
+| **Anthropic Claude Opus 5.5** | $4.00 | Reasoning champion | Adversarial review |
+| **DeepSeek V4 Pro / Flash** | $0.66–1.32 / $0.15–0.30 | Near-Parity | Budget cloud fallback |
 | **Ollama (any model)** | **FREE** | Depends on model | Code gen, analysis, all local |
 
 ### Suggested hybrid configurations
@@ -375,8 +383,8 @@ ollama:
 engineer:    llama3.2        # Code gen — local ✓
 analyst:     mistral-nemo    # Stats reasoning — local ✓  
 reviewer:    deepseek-r1     # Critical analysis — local ✓
-ideation:    gpt-4o          # Creative — cloud (few calls)
-writer:      claude-3.5-s    # Long-form writing quality — cloud
+ideation:    gpt-6.2-sol     # Creative — cloud (few calls)
+writer:      claude-opus-5-5 # Long-form writing quality — cloud
 ```
 
 **Maximum privacy (100% local):**

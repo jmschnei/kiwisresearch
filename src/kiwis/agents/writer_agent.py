@@ -11,6 +11,7 @@ from pathlib import Path
 from ..papers.citation_verifier import format_problems
 from ..papers.references import apply_repairs, bibliography_items, bibtex_file, check_citations
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+from ..models.defaults import DEFAULT_MODEL
 
 
 class WriterAgent(BaseAgent):
@@ -129,7 +130,7 @@ Ensure the narrative is coherent and compelling.
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.4)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.4)
             msgs = [
                 ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=prompt),
@@ -244,7 +245,7 @@ Ensure the narrative is coherent and compelling.
                   "removed citation). Do NOT add citations, numbers or new facts. Keep LaTeX intact. If a sentence "
                   'is fine as it is, return it unchanged.\nAnswer with JSON: {"0": "new sentence", "1": "..."}\n\n'
                   + listing)
-        config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.2)
+        config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.2)
         try:
             text = (await self._llm.chat([ChatMessage(role="system", content="You are a careful scientific copy editor."),
                                           ChatMessage(role="user", content=prompt)], config)).content

@@ -6,13 +6,15 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .defaults import DEFAULT_MAX_TOKENS
+
 
 @dataclass
 class ModelConfig:
     """Configuration for a single model call."""
     model_name: str
     temperature: float = 0.3
-    max_tokens: int = 8192
+    max_tokens: int = DEFAULT_MAX_TOKENS
     top_p: float = 1.0
     stop_sequences: list[str] = field(default_factory=list)
     presence_penalty: float = 0.0

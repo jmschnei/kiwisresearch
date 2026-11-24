@@ -7,6 +7,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from ..models.defaults import (ANTHROPIC_MODELS, DEEPSEEK_MODELS, DEFAULT_ANTHROPIC_MODEL, DEFAULT_DEEPSEEK_MODEL,
+                               DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, OPENAI_MODELS)
+
 
 class LLMProviderType(str, Enum):
     OPENAI = "openai"
@@ -29,7 +32,7 @@ class LLMProviderConfig(BaseModel):
     name: str
     api_key_env_var: Optional[str] = None
     base_url: Optional[str] = None
-    default_model: str = "gpt-4o"
+    default_model: str = DEFAULT_MODEL
     supported_models: list[str] = Field(default_factory=list)
     rate_limit_rpm: int = Field(default=1000, ge=1)
     rate_limit_tpd: int = Field(default=500000, ge=1)
@@ -64,8 +67,8 @@ class ProviderRegistry(BaseModel):
                 name="OpenAI",
                 api_key_env_var="OPENAI_API_KEY",
                 base_url=None,
-                default_model="gpt-4o",
-                supported_models=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+                default_model=DEFAULT_OPENAI_MODEL,
+                supported_models=list(OPENAI_MODELS),
             ),
         )
         reg.register(
@@ -74,8 +77,8 @@ class ProviderRegistry(BaseModel):
                 provider_type=LLMProviderType.ANTHROPIC,
                 name="Anthropic Claude",
                 api_key_env_var="ANTHROPIC_API_KEY",
-                default_model="claude-3-5-sonnet-20241022",
-                supported_models=["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+                default_model=DEFAULT_ANTHROPIC_MODEL,
+                supported_models=list(ANTHROPIC_MODELS),
             ),
         )
         reg.register(
@@ -85,8 +88,8 @@ class ProviderRegistry(BaseModel):
                 name="DeepSeek",
                 api_key_env_var="DEEPSEEK_API_KEY",
                 base_url="https://api.deepseek.com/v1",
-                default_model="deepseek-reasoner",
-                supported_models=["deepseek-reasoner", "deepseek-chat"],
+                default_model=DEFAULT_DEEPSEEK_MODEL,
+                supported_models=list(DEEPSEEK_MODELS),
             ),
         )
         reg.register(
@@ -137,7 +140,7 @@ class ProviderRegistry(BaseModel):
                     name=cfg.get("name", name),
                     api_key_env_var=cfg.get("api_key_env_var"),
                     base_url=cfg.get("base_url"),
-                    default_model=cfg.get("default_model", "gpt-4o"),
+                    default_model=cfg.get("default_model", DEFAULT_MODEL),
                     supported_models=cfg.get("supported_models", []),
                 ),
             )

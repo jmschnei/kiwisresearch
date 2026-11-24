@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
+from ..models.defaults import DEFAULT_MODEL
 
 
 class DataAnalystAgent(BaseAgent):
@@ -90,7 +91,7 @@ Provide significance testing where appropriate."""
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
-            config = self._model_config or ModelConfig(model_name="gpt-4o", temperature=0.3)
+            config = self._model_config or ModelConfig(model_name=DEFAULT_MODEL, temperature=0.3)
             msgs = [
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
