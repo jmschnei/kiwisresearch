@@ -98,28 +98,43 @@ class UsageTracker:
 class MeteredProvider(LLMProvider):
     """Wraps a provider and records (estimated) usage per agent."""
 
-    def __init__(self, inner: LLMProvider, tracker: UsageTracker, agent: str):
+    def __init__(self, inner: LLMProvider, tracker: Optional[UsageTracker], agent: str, transcript_dir=None):
         self._inner = inner
         self._tracker = tracker
         self._agent = agent
+        self._transcript_dir = transcript_dir
+
+    def _record(self, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+        if self._tracker is not None:
+            self._tracker.record(self._agent, model, prompt_tokens, completion_tokens)
+
+    def _write_transcript(self, messages: list[ChatMessage], config: ModelConfig, reply: str, seconds: float) -> None:
+        """``<transcript_dir>/NN-<agent>.md``: the exact prompt and the raw reply, to see what the model really did."""
+        if self._transcript_dir is None:
+            return
+        from pathlib import Path
+        try:
+            folder = Path(self._transcript_dir)
+            folder.mkdir(parents=True, exist_ok=True)
+            n = len(list(folder.glob("*.md"))) + 1
+            parts = [f"# {self._agent} - {config.model_name} ({seconds:.1f}s)\n"]
+            parts += [f"## {m.role}\n\n{m.content}\n" for m in messages]
+            parts.append(f"## reply\n\n{reply}\n")
+            (folder / f"{n:02d}-{self._agent}.md").write_text("\n".join(parts))
+        except OSError:
+            pass  # a transcript must never break the run
 
     async def chat(self, messages: list[ChatMessage], config: ModelConfig) -> ChatMessage:
+        started = time.monotonic()
         reply = await self._inner.chat(messages, config)
-        self._tracker.record(
-            self._agent,
-            config.model_name,
-            sum(estimate_tokens(m.content) for m in messages),
-            estimate_tokens(reply.content),
-        )
+        self._record(config.model_name, sum(estimate_tokens(m.content) for m in messages), estimate_tokens(reply.content))
+        self._write_transcript(messages, config, reply.content, time.monotonic() - started)
         return reply
 
     async def generate_text(self, prompt, system_prompt=None, config=None) -> str:
         text = await self._inner.generate_text(prompt, system_prompt, config)
         model = config.model_name if config else "unknown"
-        self._tracker.record(
-            self._agent, model,
-            estimate_tokens(prompt) + estimate_tokens(system_prompt or ""), estimate_tokens(text),
-        )
+        self._record(model, estimate_tokens(prompt) + estimate_tokens(system_prompt or ""), estimate_tokens(text))
         return text
 
     async def embed(self, texts: list[str]) -> list[list[float]]:

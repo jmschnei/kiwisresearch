@@ -53,8 +53,11 @@ async def run_research(topic: str, config_path: str | None = None, iterations: i
 
         logger.info(f"Iteration {i + 1}/{iterations} -> {out_dir}")
         started = time.monotonic()
-        state = await pipeline.run(topic, hypothesis)
-        (out_dir / "state.json").write_text(json.dumps(state.to_dict(), indent=2, default=str))
+        try:
+            state = await pipeline.run(topic, hypothesis)
+        finally:  # keep what was produced even when a phase fails: it is what you need to debug the run
+            if pipeline.state is not None:
+                (out_dir / "state.json").write_text(json.dumps(pipeline.state.to_dict(), indent=2, default=str))
 
         logger.info(f"Iteration {i + 1} finished in {time.monotonic() - started:.0f}s, "
                     f"{tracker.total_tokens} tokens (estimated), ${tracker.total_cost:.4f}")

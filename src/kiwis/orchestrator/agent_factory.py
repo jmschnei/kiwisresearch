@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Optional
 
 from ..config.agents import AgentRole
@@ -82,9 +83,10 @@ class AgentFactory:
         provider_name = cfg.provider or infer_provider_name(cfg.model)
         model_name = cfg.model.split("/", 1)[1] if cfg.model.lower().startswith("ollama/") else cfg.model
         provider = self._pool.get(provider_name)
-        if provider is not None and self._tracker is not None:
+        if provider is not None and (self._tracker is not None or self._output_dir is not None):
             from ..models.usage import MeteredProvider
-            provider = MeteredProvider(provider, self._tracker, agent=role.value)
+            transcripts = Path(self._output_dir) / "llm" if self._output_dir is not None else None
+            provider = MeteredProvider(provider, self._tracker, agent=role.value, transcript_dir=transcripts)
         kwargs: dict[str, Any] = {
             "llm_provider": provider,
             "model_config": ModelConfig(

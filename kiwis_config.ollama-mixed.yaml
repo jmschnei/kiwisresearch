@@ -1,0 +1,89 @@
+# =============================================================================
+# Kiwis Research - local run with mixed Ollama models (small + medium)
+# =============================================================================
+# Goal: check that the whole pipeline works end to end with a real LLM, quickly and for free.
+# A 7-8B model where quality matters most (code, paper, review); the small model elsewhere keeps it fast.
+#
+#   kiwis check    -c kiwis_config.ollama-mixed.yaml --ping     # everything ready? (loads the model once)
+#   kiwis research -c kiwis_config.ollama-mixed.yaml "your topic"
+#   kiwis serve    -c kiwis_config.ollama-mixed.yaml            # or run it from the dashboard
+#
+# Models: qwen2.5-coder (7B, 4.7 GB) writes the experiment code, llama3.1:8b (4.9 GB) writes and reviews the
+# paper, llama3.2:3b (2 GB) does the rest;
+# nomic-embed-text for the literature memory. Ollama swaps models in memory between phases.
+
+project_name: "kiwis-ollama-mixed"
+
+pipeline:
+  max_iterations: 1
+  hypothesis_generation_rounds: 1
+  literature_review_papers_max: 10
+  peer_review_critique_rounds: 1           # one review, no revision round: keeps the first run short
+  auto_submit_threshold: null
+
+# Small models need short, bounded answers: max_tokens caps each reply (Ollama num_predict).
+agents:
+  ideation:
+    provider: "ollama"
+    model: "llama3.2:3b"
+    temperature: 0.7
+    max_tokens: 2048
+  librarian:
+    provider: "ollama"
+    model: "llama3.2:3b"
+    temperature: 0.2
+    max_tokens: 2048
+  experiment_architect:
+    provider: "ollama"
+    model: "llama3.2:3b"
+    temperature: 0.3
+    max_tokens: 2048
+  engineer:
+    provider: "ollama"
+    model: "qwen2.5-coder"
+    temperature: 0.2
+    max_tokens: 3072
+  data_analyst:
+    provider: "ollama"
+    model: "llama3.2:3b"
+    temperature: 0.3
+    max_tokens: 2048
+  writer:
+    provider: "ollama"
+    model: "llama3.1:8b"
+    temperature: 0.4
+    max_tokens: 4096
+  reviewer:
+    provider: "ollama"
+    model: "llama3.1:8b"
+    temperature: 0.1
+    max_tokens: 2048
+
+providers:
+  ollama:
+    provider_type: "ollama"
+    base_url: "http://localhost:11434"     # or set OLLAMA_BASE_URL
+    default_model: "llama3.2:3b"
+    context_window: 16384                  # Ollama's default would silently cut the writer/reviewer prompts
+    timeout_seconds: 900                   # per reply; generous for CPU inference
+    embedding_model: "nomic-embed-text"    # local embeddings for the literature memory
+
+sandbox:
+  mode: "docker"                           # generated code runs in a throw-away container (needs Docker/Colima
+                                           # running; the kiwis-sandbox image is built on first use, ~1-2 min).
+                                           # Without Docker it falls back to "isolated" (see `kiwis check`).
+  timeout_seconds: 300
+  memory_mb: 2048
+  network_isolated: true
+
+paths:
+  output: "output/"                        # CLI runs land in output/runs/<timestamp>-1/
+
+memory:
+  enabled: true
+  vector_store: "chroma"
+  persist_dir: "./chroma_kiwis/"           # collection kiwis_papers_ollama_nomic_embed_text (separate from others)
+  collection: "kiwis_papers"
+
+logging:
+  level: "INFO"

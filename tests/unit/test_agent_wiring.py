@@ -54,7 +54,9 @@ def test_all_agents_run_with_llm():
 
     for cls in (ExperimentArchitectAgent, DataAnalystAgent, WriterAgent, ReviewerAgent):
         llm = FakeLLM(JSON_REPLY)
-        out = asyncio.run(cls(llm_provider=llm).execute(PipelineState(research_topic="x")))
+        state = PipelineState(research_topic="x")
+        state.execution_results = {"status": "success", "stdout": "acc: 0.9", "metrics": {"acc": 0.9}}
+        out = asyncio.run(cls(llm_provider=llm).execute(state))
         assert llm.calls >= 1, cls.__name__
         assert out.state.name == "COMPLETED", cls.__name__
 

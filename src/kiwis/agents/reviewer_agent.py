@@ -112,7 +112,8 @@ Respond in structured JSON:
     async def execute(self, context: AgentContext) -> AgentOutput:
         self.state = AgentState.RUNNING
         
-        paper_content = context.paper_draft.get("content", {})
+        from .parsing import normalize_paper
+        paper_content = normalize_paper(dict(context.paper_draft.get("content") or {}))
         results = context.execution_results
         analysis = context.analysis
         
@@ -129,7 +130,7 @@ Respond in structured JSON:
 Title: {paper_content.get('title', 'Untitled')}
 
 Abstract:
-{paper_content.get('abstract', sections_text[:1000] if sections_text else 'No abstract')[:500]}
+{(paper_content['abstract'] or sections_text[:1000] or 'No abstract')[:500]}
 
 Full Paper Content:
 {sections_text[:5000]}
@@ -152,20 +153,14 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response_text = (await self._llm.chat(msgs, config)).content
+            from .parsing import chat_json
+            response_text, review_data = await chat_json(self._llm, msgs, config)
+            if review_data is None:  # keep the prose review so it is not lost
+                review_data = {"overall_verdict": "unparsed", "review_text": response_text[:8000]}
         else:
-            response_text = "# Reviewer placeholder"
-
-        # Parse review JSON
-        try:
-            review_data = extract_json(response_text) or {}
-        except Exception:
-            review_data = {
-                "overall_verdict": "Review requires LLM",
-                "weaknesses": [],
-                "required_changes": [],
-                "confidence": 0.0,
-            }
+            review_data = {"overall_verdict": "Review requires LLM", "weaknesses": [], "required_changes": [],
+                           "confidence": 0.0}
+        review_data = self._clean(review_data)
 
         # Store review in context
         context.review_feedback.append(review_data)
@@ -177,11 +172,28 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
             data={
                 "verdict": review_data.get("overall_verdict", "unknown"),
                 "num_weaknesses": len(review_data.get("weaknesses", [])),
-                "fatal_issues": len([w for w in review_data.get("weaknesses", []) if w.get("severity") == "fatal"]),
-                "required_changes": [c.get("description", "")[:100] for c in review_data.get("required_changes", [])],
+                "fatal_issues": len([w for w in review_data["weaknesses"] if str(w.get("severity", "")).lower() == "fatal"]),
+                "required_changes": [c.get("description", "")[:100] for c in review_data["required_changes"]],
             },
         )
         return self.output
+
+    @staticmethod
+    def _clean(review: dict) -> dict:
+        """Lists of dicts where the format says so (models also return strings), and a verdict of a known kind."""
+        for key in ("weaknesses", "required_changes"):
+            items = review.get(key)
+            items = items if isinstance(items, list) else []
+            review[key] = [i if isinstance(i, dict) else {"description": str(i)} for i in items]
+        verdict = str(review.get("overall_verdict", "unknown"))
+        if "|" in verdict:  # the template "Accept | Borderline | Reject" copied verbatim is not a verdict
+            verdict = "unknown"
+        for known in ("Reject", "Borderline", "Accept"):  # "Borderline - needs work" -> "Borderline"
+            if verdict.strip().lower().startswith(known.lower()):
+                verdict = known
+                break
+        review["overall_verdict"] = verdict
+        return review
 
     async def _verify_citations(self, context: AgentContext) -> None:
         """Have the reviewer's own model judge whether cited abstracts support the sentences that cite them.

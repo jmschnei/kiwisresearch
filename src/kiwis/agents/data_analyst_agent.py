@@ -9,7 +9,12 @@ import json
 import re
 from .base import AgentContext, AgentOutput, AgentState, BaseAgent
 from ..models.defaults import DEFAULT_MODEL
-from .parsing import extract_json
+from .parsing import chat_json
+
+
+def has_results(results: dict) -> bool:
+    """True when the experiment ran to completion and printed something to analyse."""
+    return results.get("status") in ("success", "completed_after_debug") and bool(results.get("metrics") or (results.get("stdout") or "").strip())
 
 
 class DataAnalystAgent(BaseAgent):
@@ -60,6 +65,22 @@ Respond in structured format when providing analysis:
 }
 ```"""
 
+    def _no_results(self, context: AgentContext, results: dict) -> AgentOutput:
+        """No experiment output: report that honestly instead of asking the model to analyse nothing."""
+        status = results.get("status", "not run")
+        reason = results.get("error") or (results.get("stderr") or "")[-300:] or "no output"
+        limitation = (f"The experiment did not produce results (status: {status}; {reason.strip()}). "
+                      "No quantitative claim about the hypothesis can be made from this run.")
+        context.analysis.update({
+            "results_available": False, "statistical_summary": {}, "conclusions": [],
+            "limitations": [limitation], "recommendations": ["Fix the experiment code and run it again."],
+            "visualization_code": None, "analysis_raw": "",
+        })
+        self.state = AgentState.COMPLETED
+        self.output = AgentOutput(agent_name=self.name, state=AgentState.COMPLETED,
+                                  data={"results_available": False, "conclusions": [], "visualization_code_available": False})
+        return self.output
+
     def __init__(self, llm_provider=None, model_config=None):
         super().__init__("data-analyst-agent")
         self._llm = llm_provider
@@ -69,26 +90,24 @@ Respond in structured format when providing analysis:
         self.state = AgentState.RUNNING
         
         results = context.execution_results
-        metrics = results.get("metrics", {})
-        stdout = results.get("stdout", "")
-        
-        # Prepare analysis prompt
-        data_summary = ""
-        if isinstance(results.get("stdout"), str):
-            lines = stdout.split("\n")[-50:]  # Last 50 lines often contain final metrics
-            data_summary = "\n".join(lines)
-        elif isinstance(results.get("metrics"), dict):
-            data_summary = json.dumps(results["metrics"], indent=2)
-        
+        if not has_results(results):
+            return self._no_results(context, results)
+
+        metrics = results.get("metrics") or {}
+        stdout_tail = "\n".join((results.get("stdout") or "").splitlines()[-50:])  # final metrics are printed last
+        data_summary = (f"Final metrics (parsed from the run):\n{json.dumps(metrics, indent=2)}\n\n" if metrics else "")
+        data_summary += f"Last lines of the experiment output:\n{stdout_tail}"
+
         prompt = f"""Analyze the experimental results below.
 
 Hypothesis: {context.hypothesis}
 
-Results/Metrics:
-{data_summary[:3000]}
+{data_summary[:4000]}
 
-Perform statistical analysis and generate conclusions. Create visualization code for key findings.
-Provide significance testing where appropriate."""
+Rules: use ONLY the numbers above. Do not invent means, standard deviations, confidence intervals or p-values that
+the output does not contain; if a statistic cannot be computed from it, say so in "limitations". A single run gives
+no variance, so do not claim statistical significance from it. State whether the results support the hypothesis.
+Optionally include Python visualization code that reads results.json."""
 
         if self._llm:
             from ..models.base import ChatMessage, ModelConfig
@@ -97,20 +116,18 @@ Provide significance testing where appropriate."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response_text = (await self._llm.chat(msgs, config)).content
+            response_text, parsed = await chat_json(self._llm, msgs, config)
+            data = parsed or {}
         else:
-            response_text = "# Data Analyst placeholder"
+            response_text, data = "# Data Analyst placeholder", {}
 
-        # Try to extract analysis JSON and visualization code
-        try:
-            data = extract_json(response_text) or {}
-        except Exception:
-            data = {"conclusions": [], "limitations": [], "recommendations": []}
+        # Visualization code comes from the first reply
 
         # Extract visualization code
         viz_code_match = re.search(r'```(?:python)?\s*\n(.*?)```', response_text, re.DOTALL)
         
         analysis_output = {
+            "results_available": True,
             "analysis_raw": response_text,
             "statistical_summary": data.get("statistical_summary", {}),
             "conclusions": data.get("conclusions", []),
