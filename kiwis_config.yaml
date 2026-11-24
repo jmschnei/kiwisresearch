@@ -86,7 +86,8 @@ sandbox:
                                            # network/filesystem isolation, trusted use only)
   timeout_seconds: 600
   memory_mb: 4096
-  network_isolated: true
+  network_isolated: true                   # false: experiment code may download public data (internet
+                                           # AND your local network are reachable; see README > Sandbox)
   gpu_available: false
 
 # ---- Cleanup of finished research jobs (output/jobs). Off unless a limit is set. ----

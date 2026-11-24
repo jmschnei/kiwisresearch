@@ -405,6 +405,11 @@ def test_chat_json_asks_once_to_reformat_a_markdown_answer():
     ok = _Scripted('{"a": 1}')
     assert asyncio.run(chat_json(ok, [ChatMessage("user", "x")], ModelConfig(model_name="m")))[1] == {"a": 1}
     assert len(ok.requests) == 1  # no retry when the first answer parses
+    fragment = _Scripted('{"caption": "table"}', '{"title": "T", "sections": {"a": "b"}}')
+    data = asyncio.run(chat_json(fragment, [ChatMessage("user", "x")], ModelConfig(model_name="m"), required=("sections",)))[1]
+    assert data["sections"] == {"a": "b"}
+    worse = _Scripted('{"caption": "table"}', "no json")
+    assert asyncio.run(chat_json(worse, [ChatMessage("user", "x")], ModelConfig(model_name="m"), required=("sections",)))[1] == {"caption": "table"}
 
 
 def test_reviewer_keeps_a_prose_review_and_cleans_fields():
@@ -419,3 +424,160 @@ def test_reviewer_keeps_a_prose_review_and_cleans_fields():
                                     "required_changes": "none"})
     assert cleaned == {"overall_verdict": "Borderline", "weaknesses": [{"description": "vague"}], "required_changes": []}
     assert ReviewerAgent._clean({"overall_verdict": "Accept | Borderline | Reject"})["overall_verdict"] == "unknown"
+
+
+# ------------------------------------------------------------------ sandbox network access
+
+def test_engineer_prompt_follows_sandbox_network():
+    from kiwis.agents.engineer_agent import EngineerAgent
+    from kiwis.execution.isolated_sandbox import IsolatedSandbox
+    offline = EngineerAgent(sandbox=IsolatedSandbox(timeout=5)).system_prompt()
+    online = EngineerAgent(sandbox=IsolatedSandbox(timeout=5, network=True)).system_prompt()
+    assert "NO network access" in offline and "Internet access is available" not in offline
+    assert "Internet access is available" in online and "NO network access" not in online
+    assert "{environment}" not in online and "DATA_SOURCE" in online
+
+
+def test_data_source_reaches_analyst_and_writer():
+    from kiwis.agents.data_analyst_agent import DataAnalystAgent
+    from kiwis.agents.engineer_agent import EngineerAgent
+    from kiwis.agents.writer_agent import WriterAgent
+    from kiwis.execution.sandbox import ExecutionResult, ExecutionStatus
+    from kiwis.orchestrator.pipeline import PipelineState
+
+    class NetSandbox(_Sandbox):
+        network_enabled = True
+
+        async def execute_python(self, code, filename="experiment.py"):
+            return ExecutionResult(status=ExecutionStatus.SUCCESS,
+                                   stdout="DATA_SOURCE: ESOL (https://example.org/delaney.csv)\nmae: 0.5\n")
+
+    state, llm = PipelineState(research_topic="t"), _Scripted("```python\nprint(1)\n```", '{"conclusions": ["c"]}')
+    asyncio.run(EngineerAgent(llm_provider=llm, model_config=ModelConfig(model_name="m"), sandbox=NetSandbox([])).execute(state))
+    assert state.execution_results["data_sources"] == ["ESOL (https://example.org/delaney.csv)"]
+    assert state.execution_results["network"] is True and "download the real data" in llm.requests[0][-1].content
+    asyncio.run(DataAnalystAgent(llm_provider=llm, model_config=ModelConfig(model_name="m")).execute(state))
+    assert "ESOL (https://example.org/delaney.csv)" in llm.requests[1][-1].content
+    assert "ESOL" in WriterAgent._results_block(state) and "synthetic or small bundled" not in WriterAgent._results_block(state)
+    state.execution_results.pop("data_sources")
+    assert "did not report its data source" in WriterAgent._results_block(state)
+
+
+def test_network_setting_reaches_sandbox_and_check(tmp_path, ollama, monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    from kiwis.execution.factory import make_sandbox
+    from kiwis.preflight import format_report, run_checks
+    s = ollama_settings(ollama, mode="isolated", network_isolated=False)
+    assert make_sandbox(s, tmp_path).network_enabled is True
+    assert "[WARN] sandbox network: ENABLED" in format_report(asyncio.run(run_checks(s)))
+    s.sandbox.network_isolated = True
+    assert make_sandbox(s, tmp_path).network_enabled is False
+    assert "sandbox network" not in format_report(asyncio.run(run_checks(s)))
+    mixed = Settings.from_file(ROOT / "kiwis_config.ollama-mixed.yaml")
+    assert mixed.sandbox.network_isolated is False and mixed.agents.engineer.model == "qwen3-coder:30b"
+
+
+def test_failed_download_gets_another_try_when_online():
+    from kiwis.agents.engineer_agent import EngineerAgent
+    from kiwis.execution.sandbox import ExecutionResult, ExecutionStatus
+    from kiwis.orchestrator.pipeline import PipelineState
+
+    class Net:
+        network_enabled = True
+
+        def __init__(self):
+            self.outputs = ["Error loading data: HTTP Error 404: Not Found\nDATA_SOURCE: synthetic\nmae: 0.9\n",
+                            "DATA_SOURCE: ESOL https://x/delaney.csv\nmae: 0.5\n"]
+
+        async def execute_python(self, code, filename="experiment.py"):
+            return ExecutionResult(status=ExecutionStatus.SUCCESS, stdout=self.outputs.pop(0))
+
+    llm, state = _Coder(), PipelineState(research_topic="t")
+    out = asyncio.run(EngineerAgent(llm_provider=llm, model_config=ModelConfig(model_name="m"), sandbox=Net()).execute(state))
+    assert out.data["bug_count"] == 1 and "HTTP Error 404" in llm.prompts[1] and "different, real public source" in llm.prompts[1]
+    assert state.execution_results["data_sources"] == ["ESOL https://x/delaney.csv"]
+
+    offline = _Sandbox([True])  # offline sandbox: synthetic data is the expected outcome, no retry
+    asyncio.run(EngineerAgent(llm_provider=_Coder(), model_config=ModelConfig(model_name="m"), sandbox=offline).execute(state))
+    assert len(offline.codes) == 1
+
+
+def test_raw_newlines_in_strings_and_largest_object_wins():
+    raw = '```json\n{"title": "T", "abstract": "line one\n\nline two", "tables": [{"caption": "c", "content": "x"}]}\n```'
+    assert extract_json(raw)["title"] == "T"
+    assert extract_json('{"a": 1} and {"b": {"c": 2, "d": 3}}') == {"b": {"c": 2, "d": 3}}
+
+
+def test_metric_ranking_is_computed_not_guessed():
+    from kiwis.agents.data_analyst_agent import metric_ranking
+    text = metric_ranking({"test_mae_linear_regression": 0.078, "test_mae_proposed": 0.15, "Random_Forest_MAE": 0.70,
+                           "acc_proposed": 0.8, "acc_baseline": 0.9, "epochs": 50})
+    assert "MAE (lower is better), best first: test_mae_linear_regression = 0.078 < test_mae_proposed = 0.15" in text
+    assert "-> best: test_mae_linear_regression" in text and "-> best: acc_baseline" in text and "epochs" not in text
+    assert metric_ranking({"mae": 1.0}) == "" and metric_ranking({}) == ""
+    assert "-> tie between p_a, p_b" in metric_ranking({"precision_a": 1.0, "precision_b": 1.0}).replace("precision_", "p_")
+
+
+def test_numpy_scalars_in_results_line():
+    from kiwis.agents.engineer_agent import EngineerAgent
+    line = 'RESULTS_JSON: {"mae": 0.07, "rmse": np.float64(0.0979), "r2": numpy.float32(0.5)}'
+    assert EngineerAgent._extract_metrics(line) == {"mae": 0.07, "rmse": 0.0979, "r2": 0.5}
+
+
+def test_reviewer_gets_ground_truth_and_ranking():
+    from kiwis.agents import ReviewerAgent
+    from kiwis.orchestrator.pipeline import PipelineState
+    state = PipelineState(research_topic="t")
+    state.paper_draft = {"content": {"title": "T", "abstract": "We beat everything on PCQM4M.", "sections": {"results": "R"}}}
+    state.execution_results = {"status": "success", "stdout": "x", "data_sources": ["synthetic"],
+                               "metrics": {"mae_proposed": 0.15, "mae_linear": 0.08}}
+    llm = _Scripted('{"overall_verdict": "Reject"}')
+    asyncio.run(ReviewerAgent(llm_provider=llm, model_config=ModelConfig(model_name="m")).execute(state))
+    prompt = llm.requests[0][-1].content
+    assert "GROUND TRUTH" in prompt and "synthetic" in prompt and "-> best: mae_linear" in prompt and '"fatal"' in prompt
+    state.execution_results = {"status": "failed"}
+    assert "produced NO results" in ReviewerAgent._facts(state)
+
+
+def test_missing_commas_and_ideation_fallback():
+    raw = '```json\n{"hypotheses": [{"title": "A",\n "hypothesis": "H one"\n "motivation": "m"\n }], "top_hypothesis_index": 0}\n```'
+    assert extract_json(raw)["hypotheses"][0]["hypothesis"] == "H one"
+    from kiwis.agents.ideation_agent import _hypothesis_from_text
+    assert _hypothesis_from_text('broken {"hypothesis": "GNNs help" "x" ]') == "GNNs help"
+    assert _hypothesis_from_text("```json\n{]\n```\n## Graph models predict solubility well") == "Graph models predict solubility well"
+
+
+def test_results_table_comes_from_metrics_and_fatal_means_reject():
+    from kiwis.agents import ReviewerAgent
+    from kiwis.agents.writer_agent import WriterAgent
+    from kiwis.orchestrator.pipeline import PipelineState
+    state = PipelineState(research_topic="t")
+    assert WriterAgent._results_tables(state) == []  # no results, no table
+    state.execution_results = {"status": "success", "stdout": "x", "data_sources": ["ESOL"],
+                               "metrics": {"test_mae_lr": 0.0743066, "test_mae_proposed": 0.1007}}
+    table = WriterAgent._results_tables(state)[0]
+    assert "test\\_mae\\_lr & 0.07431 \\\\" in table["content"] and "test\\_mae\\_proposed & 0.1007" in table["content"]
+    assert table["content"].startswith("\\begin{tabular}{lr}") and "ESOL" in table["caption"]
+    # the model's verdict is kept even with a "fatal" weakness: small reviewers misread the ground truth too
+    review = ReviewerAgent._clean({"overall_verdict": "Borderline", "weaknesses": [{"severity": "Fatal", "description": "x"}]})
+    assert review["overall_verdict"] == "Borderline"
+
+
+def test_online_engineer_asks_once_for_real_data():
+    from kiwis.agents.engineer_agent import EngineerAgent
+    from kiwis.execution.sandbox import ExecutionResult, ExecutionStatus
+    from kiwis.orchestrator.pipeline import PipelineState
+
+    class Net:
+        network_enabled = True
+
+        def __init__(self):
+            self.runs = 0
+
+        async def execute_python(self, code, filename="experiment.py"):
+            self.runs += 1
+            return ExecutionResult(status=ExecutionStatus.SUCCESS, stdout="DATA_SOURCE: synthetic\nmae: 0.5\n")
+
+    llm, sandbox = _Coder(), Net()
+    asyncio.run(EngineerAgent(llm_provider=llm, model_config=ModelConfig(model_name="m"), sandbox=sandbox).execute(PipelineState(research_topic="t")))
+    assert sandbox.runs == 2 and "real public dataset" in llm.prompts[1]  # one nudge, then synthetic is accepted

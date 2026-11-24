@@ -106,6 +106,9 @@ async def run_checks(settings, ping: bool = False) -> list[Check]:
                              required=False))
 
     # sandbox for generated experiment code
+    if not settings.sandbox.network_isolated:
+        results.append(Check("sandbox network", False, "ENABLED: generated experiment code can access the internet "
+                             "(and, in Docker's bridge network, your local network) to download data", required=False))
     if settings.sandbox.mode == "docker":
         from .execution.docker_sandbox import docker_available
         ok = docker_available()

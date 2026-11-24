@@ -16,15 +16,18 @@ class IsolatedSandbox(CodeSandbox):
     """Subprocess-based sandbox for Python and LaTeX execution.
     
     Runs code in isolated subprocesses with:
-    - Working directory isolation
-    - Time/memory limits (OS-level)
-    - No network by default
+    - Its own working directory
+    - A timeout
     - Graceful error handling
+
+    It does NOT block network or filesystem access. ``network`` only declares whether the generated code is meant to
+    use the internet (the engineer is told so); use Docker mode to enforce it.
     """
 
-    def __init__(self, base_dir: Optional[str] = None, timeout: int = 600):
+    def __init__(self, base_dir: Optional[str] = None, timeout: int = 600, network: bool = False):
         self._base_dir = base_dir or tempfile.mkdtemp(prefix="kiwis_isolated_")
         self._timeout = timeout
+        self.network_enabled = network
 
     async def initialize(self) -> None:
         os.makedirs(self._base_dir, exist_ok=True)

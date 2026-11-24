@@ -74,8 +74,10 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
                 ChatMessage(role="system", content=self.SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            response_text = (await self._llm.chat(msgs, config)).content
+            from .parsing import chat_json
+            response_text, parsed = await chat_json(self._llm, msgs, config, required=("hypotheses",))
         else:
+            parsed = None
             response_text = "# Placeholder: LLM not configured\n# Hypothesis generation requires an active LLM provider."
         
         # Parse output
@@ -84,9 +86,11 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
         
         try:
             # Extract JSON from markdown code blocks
-            data = extract_json(response_text)
+            data = parsed if parsed is not None else extract_json(response_text)
             if not data or not isinstance(data.get("hypotheses"), list) or not data["hypotheses"]:
-                data = {"hypotheses": [{"title": "N/A", "hypothesis": response_text, "motivation": "", "feasibility": "", "novelty": "", "risk_level": "Medium"}], "top_hypothesis_index": 0, "rationale": ""}
+                data = {"hypotheses": [{"title": "N/A", "hypothesis": _hypothesis_from_text(response_text), "motivation": "",
+                                        "feasibility": "", "novelty": "", "risk_level": "Medium"}],
+                        "top_hypothesis_index": 0, "rationale": ""}
         except (json.JSONDecodeError, Exception):
             data = {
                 "hypotheses": [{"title": "Generated from text", "hypothesis": response_text, "motivation": "", "feasibility": "", "novelty": "", "risk_level": "Medium"}],
@@ -110,3 +114,16 @@ Identify research gaps and propose hypotheses. Generate 3-5 novel hypotheses."""
             metadata={"model": getattr(self._model_config, 'model_name', 'unknown') if self._model_config else 'n/a'},
         )
         return self.output
+
+
+def _hypothesis_from_text(text: str) -> str:
+    """Best effort when the reply is not parseable JSON: the first "hypothesis" value, else the first prose line."""
+    import re
+    match = re.search(r'"hypothesis"\s*:\s*"((?:[^"\\]|\\.)+)"', text or "")
+    if match:
+        return match.group(1).strip()
+    for line in re.sub(r"```.*?```", "", text or "", flags=re.DOTALL).splitlines():
+        line = line.strip(" #*-")
+        if len(line) > 20:
+            return line[:500]
+    return (text or "").strip()[:500]

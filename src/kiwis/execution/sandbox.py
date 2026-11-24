@@ -32,6 +32,9 @@ class ExecutionResult:
 class CodeSandbox(abc.ABC):
     """Abstract sandbox environment for code execution."""
 
+    network_enabled: bool = False
+    """Whether code run here may reach the internet. Agents adapt their prompts to it (download real data or not)."""
+
     @abc.abstractmethod
     async def initialize(self) -> None:
         """Prepare the sandbox (pull images, create envs, etc.)."""

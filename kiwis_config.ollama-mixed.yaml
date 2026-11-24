@@ -8,8 +8,8 @@
 #   kiwis research -c kiwis_config.ollama-mixed.yaml "your topic"
 #   kiwis serve    -c kiwis_config.ollama-mixed.yaml            # or run it from the dashboard
 #
-# Models: qwen2.5-coder (7B, 4.7 GB) writes the experiment code, llama3.1:8b (4.9 GB) writes and reviews the
-# paper, llama3.2:3b (2 GB) does the rest;
+# Models: qwen3-coder:30b (MoE, ~3B active, 18 GB) writes the experiment code, llama3.1:8b (4.9 GB) analyses the results,
+# writes and reviews the paper, llama3.2:3b (2 GB) does the rest;
 # nomic-embed-text for the literature memory. Ollama swaps models in memory between phases.
 
 project_name: "kiwis-ollama-mixed"
@@ -40,12 +40,12 @@ agents:
     max_tokens: 2048
   engineer:
     provider: "ollama"
-    model: "qwen2.5-coder"
+    model: "qwen3-coder:30b"
     temperature: 0.2
     max_tokens: 3072
   data_analyst:
     provider: "ollama"
-    model: "llama3.2:3b"
+    model: "llama3.1:8b"
     temperature: 0.3
     max_tokens: 2048
   writer:
@@ -74,7 +74,8 @@ sandbox:
                                            # Without Docker it falls back to "isolated" (see `kiwis check`).
   timeout_seconds: 300
   memory_mb: 2048
-  network_isolated: true
+  network_isolated: false                  # the experiment downloads real public data (internet access;
+                                           # `kiwis check` warns about it). true = offline, synthetic data
 
 paths:
   output: "output/"                        # CLI runs land in output/runs/<timestamp>-1/

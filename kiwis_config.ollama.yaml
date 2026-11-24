@@ -73,7 +73,7 @@ sandbox:
                                            # Without Docker it falls back to "isolated" (see `kiwis check`).
   timeout_seconds: 300
   memory_mb: 2048
-  network_isolated: true
+  network_isolated: true                   # false: let the experiment download real data
 
 paths:
   output: "output/"                        # CLI runs land in output/runs/<timestamp>-1/

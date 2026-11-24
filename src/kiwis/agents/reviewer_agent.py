@@ -141,6 +141,8 @@ Results/Metrics:
 Analysis & Conclusions:
 {json.dumps(analysis.get("conclusions", []), indent=2, default=str)[:1000]}
 
+{self._facts(context)}
+
 Provide a thorough, rigorous review covering ALL criteria. Be specific about what needs to be fixed."""
         await self._verify_citations(context)
         prompt += self._citation_note(context)
@@ -177,6 +179,20 @@ Provide a thorough, rigorous review covering ALL criteria. Be specific about wha
             },
         )
         return self.output
+
+    @staticmethod
+    def _facts(context: AgentContext) -> str:
+        """What the experiment really did, so the review can catch a paper that contradicts it."""
+        from .data_analyst_agent import data_source_note, has_results, metric_ranking
+        results = context.execution_results
+        if not has_results(results):
+            facts = "The experiment produced NO results."
+        else:
+            facts = data_source_note(results) + "\n" + metric_ranking(results.get("metrics") or {})
+        return ("=== GROUND TRUTH (from the experiment run, not from the paper) ===\n" + facts.strip() + "\n"
+                "Compare the paper against it. Any dataset, number, table, comparison or \"outperforms\" claim that the "
+                "ground truth does not support is fabricated: report it as a weakness with severity \"fatal\" and "
+                "quote the claim.")
 
     @staticmethod
     def _clean(review: dict) -> dict:

@@ -253,6 +253,15 @@ Generated experiment code runs in one of two sandboxes (`sandbox.mode`):
 - **`isolated`**: a plain subprocess with a timeout. It does **not** restrict network or filesystem access, so use it
   only with models and topics you trust.
 
+**Network access.** With `network_isolated: true` (default) experiment code is offline and the engineer generates
+synthetic data or uses datasets bundled with scikit-learn. With `network_isolated: false` the engineer is told to download
+the real public dataset of the plan (direct CSV/ZIP URLs, `fetch_openml`, ...), cache it in `./data/` and print a
+`DATA_SOURCE:` line; the analyst and the writer only describe the data that line reports. Packages still cannot be
+installed. Be aware that model-written code then runs with internet access: in Docker it uses the default `bridge`
+network, which can also reach your local network and services on the host. Use it on a machine/network where that is
+acceptable; `kiwis check` warns when it is enabled. In `isolated` mode the flag only changes what the engineer is
+told: nothing is blocked either way.
+
 If `docker` is configured but no daemon answers, Kiwis logs a warning and falls back to `isolated`. LaTeX compilation
 inside Docker (`DockerSandbox.compile_latex`, image `texlive/texlive:latest-small`) is implemented but not exercised by
 the tests; the writer compiles the paper with the local `pdflatex`.

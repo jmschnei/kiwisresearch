@@ -19,4 +19,5 @@ def make_sandbox(settings, output_dir: Path):
                                  memory_mb=settings.sandbox.memory_mb, network=not settings.sandbox.network_isolated)
         logger.warning("Sandbox mode is 'docker' but no Docker daemon answers; falling back to the isolated "
                        "subprocess sandbox, which does NOT isolate network or filesystem")
-    return IsolatedSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds)
+    return IsolatedSandbox(base_dir=str(output_dir / "sandbox"), timeout=settings.sandbox.timeout_seconds,
+                           network=not settings.sandbox.network_isolated)

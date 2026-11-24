@@ -55,6 +55,7 @@ WORKDIR /workspace
         self._timeout = timeout
         self._memory_mb = memory_mb
         self._network = network
+        self.network_enabled = network  # bridge network for experiment code; LaTeX always runs without network
         self._image_name = image_name
         self._dockerfile = dockerfile or self.DOCKERFILE
         self._latex_image = latex_image

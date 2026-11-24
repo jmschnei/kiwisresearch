@@ -21,17 +21,23 @@ def strip_thinking(text: str) -> str:
 
 
 def _first_object(text: str) -> Optional[dict]:
-    decoder = json.JSONDecoder()
-    for i, ch in enumerate(text):
-        if ch != "{":
+    """The largest JSON object embedded in ``text`` (not merely the first: when the outer object is broken, the first
+    one that parses is usually a nested fragment such as a table)."""
+    decoder = json.JSONDecoder(strict=False)
+    best, best_len, i = None, 0, 0
+    while i < len(text):
+        if text[i] != "{":
+            i += 1
             continue
         try:
-            obj, _ = decoder.raw_decode(text, i)
+            obj, end = decoder.raw_decode(text, i)
         except ValueError:
+            i += 1
             continue
-        if isinstance(obj, dict):
-            return obj
-    return None
+        if isinstance(obj, dict) and end - i > best_len:
+            best, best_len = obj, end - i
+        i = end
+    return best
 
 
 _TEXT_KEYS = ("text", "content", "body", "paragraph", "paragraphs")
@@ -99,15 +105,17 @@ def _repair_latex_escapes(text: str) -> str:
 
 
 _TRAILING_COMMA = re.compile(r",(\s*[\]}])")
+# a value followed on the next line by another key with no comma in between: "a": "x"\n "b": ...
+_MISSING_COMMA = re.compile(r'("|\d|true|false|null|[\]}])(\s*\n\s*)(?="[^"\n]+"\s*:)')
 
 
 def _parse_object(text: str) -> Optional[dict]:
     """The whole text as a JSON object (repairing LaTeX escapes and trailing commas if needed), else the first
     object inside it."""
-    no_commas = _TRAILING_COMMA.sub(r"\1", text)
+    no_commas = _MISSING_COMMA.sub(r"\1,\2", _TRAILING_COMMA.sub(r"\1", text))
     for candidate in (text, _repair_latex_escapes(text), no_commas, _repair_latex_escapes(no_commas)):
         try:
-            obj = json.loads(candidate)
+            obj = json.loads(candidate, strict=False)  # tolerate raw newlines/tabs inside strings
         except ValueError:
             continue
         if isinstance(obj, dict):
@@ -135,15 +143,22 @@ REFORMAT_PROMPT = ("Your answer did not contain the JSON object required by the 
                    "```json block: no prose, no Markdown headings.")
 
 
-async def chat_json(llm, messages: list, config) -> tuple[str, Optional[dict]]:
-    """Chat and extract the JSON object; if there is none (a model answering in Markdown, for example), ask the model
-    once to convert its own answer. Returns ``(raw reply text, parsed object or None)``."""
+async def chat_json(llm, messages: list, config, required: tuple = ()) -> tuple[str, Optional[dict]]:
+    """Chat and extract the JSON object; if there is none (a model answering in Markdown, for example) or it lacks a
+    ``required`` key, ask the model once to convert its own answer. Returns ``(raw reply text, parsed object or None)``;
+    the first parse is kept if the retry is not better."""
     from ..models.base import ChatMessage
+
+    def complete(d):
+        return d is not None and all(k in d for k in required)
+
     text = (await llm.chat(messages, config)).content
     data = extract_json(text)
-    if data is None and strip_thinking(text):
+    if not complete(data) and strip_thinking(text):
         retry = list(messages) + [ChatMessage(role="assistant", content=text), ChatMessage(role="user", content=REFORMAT_PROMPT)]
-        data = extract_json((await llm.chat(retry, config)).content)
+        again = extract_json((await llm.chat(retry, config)).content)
+        if complete(again) or data is None:
+            data = again
     return text, data
 
 

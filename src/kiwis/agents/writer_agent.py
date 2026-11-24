@@ -50,8 +50,8 @@ Citations: cite ONLY the references provided in the prompt, using \\cite{key} wi
 Never invent references, authors or results, and do not write a bibliography: it is generated automatically from the
 cited keys. Claims you cannot support with a provided reference or with the experiment results must be stated as
 hypotheses or limitations. The Introduction and the Related Work must each cite at least three of the provided
-references, attributing to each paper what its abstract says. Tables may only contain numbers from the experiment
-results: never add comparison tables with invented values or ratings.
+references, attributing to each paper what its abstract says. The results table is generated automatically from the
+measured metrics: return "tables": [] and refer to it as Table 1; never write numbers that are not in the results.
 Inside the JSON strings, write each LaTeX backslash twice (\\\\cite{key}, \\\\textbf{x}) so the JSON stays valid.
 
 Respond in this structure:
@@ -135,7 +135,7 @@ Ensure the narrative is coherent and compelling.
                 ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=prompt),
             ]
-            _, parsed = await chat_json(self._llm, msgs, config)
+            _, parsed = await chat_json(self._llm, msgs, config, required=("sections",))
             paper_data = parsed or {}
         else:
             paper_data = {}
@@ -146,6 +146,7 @@ Ensure the narrative is coherent and compelling.
         elif not paper_data:
             paper_data = {"title": "Untitled", "abstract": "", "sections": {}, "tables": [], "figures": []}
         normalize_paper(paper_data)  # small models nest text as {"text": ...}; downstream code needs strings
+        paper_data["tables"] = self._results_tables(context)  # numbers in tables come from the run, never the model
 
         # Only real references may be cited: drop invented keys, keep a report
         paper_data.pop("bibliography_entries", None)  # never trust an LLM-written bibliography
@@ -250,9 +251,27 @@ Ensure the narrative is coherent and compelling.
         return apply_repairs(paper_data, rewrites, repairs, references)
 
     @staticmethod
+    def _results_tables(context: AgentContext) -> list[dict]:
+        """The results table, built from the measured metrics (models swap labels or invent rows when they write it).
+        No results -> no table."""
+        from .data_analyst_agent import has_results
+        metrics = context.execution_results.get("metrics") or {}
+        if not has_results(context.execution_results) or not metrics:
+            return []
+
+        def tex(s: str) -> str:
+            return re.sub(r"([_%&#$])", r"\\\1", str(s))
+
+        rows = "\n".join(f"{tex(name)} & {value:.4g} \\\\" for name, value in metrics.items())
+        source = "; ".join(context.execution_results.get("data_sources") or []) or "not reported"
+        return [{"caption": tex(f"Metrics measured by the experiment script (data: {source}).")[:300],
+                 "content": "\\begin{tabular}{lr}\n\\toprule\nMetric & Value \\\\\n\\midrule\n" + rows +
+                            "\n\\bottomrule\n\\end{tabular}"}]
+
+    @staticmethod
     def _results_block(context: AgentContext) -> str:
         """What the experiment really produced. Without results, the paper must say so instead of inventing them."""
-        from .data_analyst_agent import has_results
+        from .data_analyst_agent import data_source_note, has_results, metric_ranking
         results, analysis = context.execution_results, context.analysis
         if not has_results(results):
             limits = "; ".join(analysis.get("limitations") or []) or f"status: {results.get('status', 'not run')}"
@@ -262,10 +281,11 @@ Ensure the narrative is coherent and compelling.
                     "outcome. Do not claim that the hypothesis is confirmed.")
         metrics = results.get("metrics") or {}
         return (f"Execution Results (status: {results.get('status')}; these are the ONLY numbers you may report):\n"
-                f"{json.dumps(metrics, indent=2) if metrics else (results.get('stdout') or '')[-2000:]}\n\n"
+                f"{json.dumps(metrics, indent=2) if metrics else (results.get('stdout') or '')[-2000:]}\n"
+                f"{metric_ranking(metrics)}\n\n"
                 f"Analysis and Conclusions:\n{json.dumps(analysis.get('conclusions', []), indent=2, default=str)[:1000]}\n"
                 f"Limitations:\n{json.dumps(analysis.get('limitations', []), indent=2, default=str)[:600]}\n"
-                "The experiment used synthetic or small bundled data in a sandbox: say so in the Experiments section.")
+                f"{data_source_note(results)}")
 
     @staticmethod
     def _references_block(references: list[dict]) -> str:
